@@ -1,7 +1,7 @@
+import os
 import numpy as np
 import pandas as pd
 import gzip
-from os import path
 from skbio import DistanceMatrix
 from yaml import dump
 

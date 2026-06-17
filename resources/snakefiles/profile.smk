@@ -91,20 +91,15 @@ rule download_metaphlan_db:
         "output/benchmarks/profile/download_metaphlan_db/download_metaphlan_db_benchmark.txt"
     shell:
         """
-        if test -f "{output}/mpa_latest"; then
-            touch {output}
-            echo "DB already installed at {output}"
-        else
-            metaphlan --install --bowtie2db {output} \
-                2> {log} 1>&2
-        fi
+        metaphlan --install \
+            --bowtie2db {output} \
+            --index latest \
+            2> {log} 1>&2
         """
 
 rule metaphlan:
     """
-
-    Performs taxonomic profiling using MetaPhlAn3.
-
+    Performs taxonomic profiling using MetaPhlAn4.
     """
     input:
         fastq1=rules.host_filter.output.nonhost_R1,
@@ -119,6 +114,7 @@ rule metaphlan:
     threads:
         config['threads']['metaphlan']
     params:
+        db_name=config['params']['metaphlan']['db_name'],
         other=config['params']['metaphlan']['other']
     benchmark:
         "output/benchmarks/profile/metaphlan/{sample}_benchmark.txt"
@@ -126,20 +122,17 @@ rule metaphlan:
         "output/logs/profile/metaphlan/{sample}.log"
     shell:
         """
-        if [ ! -d output/profile/metaphlan/bowtie2s ]; then
-                mkdir -p output/profile/metaphlan/bowtie2s
-        fi
+        mkdir -p output/profile/metaphlan/bowtie2s output/profile/metaphlan/sams
 
-        if [ ! -d output/profile/metaphlan/sams ]; then
-                mkdir -p output/profile/metaphlan/sams
-        fi
         metaphlan {input.fastq1},{input.fastq2} \
         --input_type fastq \
-        --nproc {threads} {params.other} \
+        --nproc {threads} \
         --bowtie2db {input.db_path} \
-        --bowtie2out {output.bt2}  \
-        -s {output.sam}  \
+        --index {params.db_name} \
+        --bowtie2out {output.bt2} \
+        -s {output.sam} \
         -o {output.profile} \
+        {params.other} \
         2> {log} 1>&2
         """
 

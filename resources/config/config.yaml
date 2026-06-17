@@ -44,8 +44,8 @@ params:
     scaled: 1000
     extra: ''
   metaphlan:
-    db_path: "/Users/danielsprockett/Software/metaphlan3"
-    db_name: "mpa_v30_CHOCOPhlAn_201901"
+    db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/metaphlan"
+    db_name: "mpa_vJan25_CHOCOPhlAnSGB_202503"
     other: "--add_viruses --unclassified_estimation"
   metaquast:
     reference_dir: "resources/db/metaquast/"
@@ -72,8 +72,8 @@ params:
     search_engine: 'diamond'
   kraken2:
     levels: 'P,C,O,F,G,S'
-    db: '/workdir/dbs/kraken2/gtdb/ftp.tue.mpg.de/ebio/projects/struo/GTDB_release89/kraken2'
-    bracken-db: '/workdir/dbs/kraken2/gtdb/ftp.tue.mpg.de/ebio/projects/struo/GTDB_release89/bracken'
+    db: '/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/kraken2/Kraken2_db_Standard'
+    bracken-db: '/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/kraken2/Kraken2_db_Standard'
 
 threads:
   fastqc: 1
@@ -100,18 +100,16 @@ mem_mb:
   megahit: 256000
 
 host_filter:
-  db_dir: resources/db/bt2
-  genome: resources/db/bt2/GCA_000819615.1.fna # PhiX for test purposes
-  # NCBI GenBank Accession number for the host genome assembly.
-  # This will be automatically downloaded and indexed in the location
-  # {db_dir}/{accn}.
-  # Some Useful Accession Numbers:
-  # Latest builds as of 12-July-2021
-  # Genome Reference Consortium Human Build 38 patch release 13 (GRCh38.p13)
-  # accn: GCA_000001405.28
-  # Genome Reference Consortium Mouse Build 39
-  # accn: GCA_000001635.9
-  # Setophaga coronata coronata (myrtle warbler) (mywa_2.1) - Cornell University
-  # accn: GCA_001746935.2
-  # E coli
-  # accn: GCA_000005845.2
+  db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14"
+  genome: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna"
+  # db_dir: directory containing the bowtie2 index files
+  # genome: full path to the host genome FASTA (bowtie2 index must have the same stem in db_dir)
+  #
+  # Pre-built indexes on demon (/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/):
+  #   Human GRCh38.p14:  human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna
+  #   Mouse GRCm39:      (not yet indexed — download GCA_000001635.9 and run host_bowtie2_build)
+  #   Warbler (mywa_2.1):(not yet indexed — download GCA_001746935.2 and run host_bowtie2_build)
+  #
+  # For test runs (PhiX):
+  #   db_dir: resources/test/test_dbs
+  #   genome: resources/db/bt2/GCA_000819615.1.fna

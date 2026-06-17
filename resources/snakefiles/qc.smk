@@ -1,7 +1,7 @@
-from os.path import splitext
+from os.path import splitext, basename
 
 host_base = join(config['host_filter']['db_dir'],
-                      splitext(config['host_filter']['genome'])[0])
+                 splitext(basename(config['host_filter']['genome']))[0])
 
 rule fastqc_pre_trim:
     input:
@@ -48,12 +48,10 @@ rule fastqc_post_trim:
         "output/qc/cutadapt_pe/{sample}.{unit}.{read}.fastq.gz"
     output:
         html="output/qc/fastqc_post_trim/{sample}.{unit}.{read}.html",
-        zip="output/qc/fastqc_post_trim/{sample}.{unit}.{read}_fastqc.zip" # the suffix _fastqc.zip is necessary for multiqc to find the file. If not using multiqc, you are free to choose an arbitrary filename
+        zip="output/qc/fastqc_post_trim/{sample}.{unit}.{read}_fastqc.zip"
     benchmark:
         "output/benchmarks/qc/fastqc_post_trim/{sample}.{unit}.{read}_benchmark.txt"
     params: ""
-    benchmark:
-        "output/benchmarks/qc/fastqc_post_trim/{sample}_{unit}_{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
     wrapper:
@@ -72,10 +70,6 @@ rule merge_units:
     log:
         "output/logs/qc/merge_units/{sample}.combined.{read}.log"
     params: ""
-    log:
-        "output/logs/qc/merge_units/{sample}_combined_{read}.log"
-    benchmark:
-        "output/benchmarks/qc/merge_units/{sample}_combined_{read}_benchmark.txt"
     threads: 1
     shell: "cat {input} > {output}"
 

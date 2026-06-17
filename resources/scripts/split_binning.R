@@ -9,7 +9,7 @@ if (n_groups < 1) {
 }
 
 # n_groups <- 10
-# binning_file <- "/Users/danielsprockett/Software/sn-mg-pipeline/resources/scripts/binning_test.txt"
+# binning_file <- "/Users/danielsprockett/Software/MAGmaker/resources/scripts/binning_test.txt"
 
 binning_df <- read.table(file = binning_file, sep = "\t", header = TRUE)
 sample_list <- binning_df$Sample

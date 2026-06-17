@@ -6,8 +6,8 @@ sample_file <- args[2]
 unit_file <- args[3]
 
 # n_groups <- 10
-# sample_file <- "/Users/danielsprockett/Software/sn-mg-pipeline/resources/scripts/sample_test.txt"
-# unit_file <- "/Users/danielsprockett/Software/sn-mg-pipeline/resources/scripts/unit_test.txt"
+# sample_file <- "/Users/danielsprockett/Software/MAGmaker/resources/scripts/sample_test.txt"
+# unit_file <- "/Users/danielsprockett/Software/MAGmaker/resources/scripts/unit_test.txt"
 
 sample_df <- read.table(file = sample_file, header = TRUE)
 sample_list <- sample_df$Sample
