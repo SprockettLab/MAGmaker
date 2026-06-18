@@ -1,11 +1,12 @@
 channels:
-  - defaults
-  - bioconda
   - conda-forge
+  - bioconda
+  - defaults
 dependencies:
-  - sourmash>=3.0
-  - python>=3.6
-  - scikit-bio=0.5
+  - python>=3.9
+  - sourmash>=4.0
+  - scikit-bio>=0.5
   - scikit-learn
-  - biom-format
+  - numpy
+  - pandas
   - seaborn
