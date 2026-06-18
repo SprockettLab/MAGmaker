@@ -127,20 +127,25 @@ Then set `params.checkm2.db_path` to the downloaded `.dmnd` file and `params.gun
 
 ### GTDB-tk
 
-GTDB-tk requires a reference data package (~85 GB) that must be downloaded before the taxonomy step will run. Set `params.gtdbtk.db_path` in `config.yaml` to the directory containing this data.
+GTDB-tk requires a reference data package (~85 GB) that must be downloaded before the taxonomy step will run. Set `params.gtdbtk.db_path` in `config.yaml` to the directory containing the extracted data.
+
+Download the data package directly from the [GTDB data server](https://data.gtdb.ecogenomics.org/releases/). Browse to the latest release directory, find the `gtdbtk_data_r*.tar.gz` package, and download it with `wget`:
 
 ```bash
-mamba create -n gtdbtk_setup -c conda-forge -c bioconda gtdbtk -y
-conda activate gtdbtk_setup
+mkdir -p /your/dbs/gtdbtk
+cd /your/dbs/gtdbtk
 
-mkdir -p /your/shared/dbs/gtdbtk
-gtdbtk download_db --db_version R220 \
-  --download_path /your/shared/dbs/gtdbtk/
+# Replace the URL with the current package from data.gtdb.ecogenomics.org/releases/
+wget -c https://data.gtdb.ecogenomics.org/releases/release232/<path/to/gtdbtk_data_r232.tar.gz>
+tar -xzf gtdbtk_data_r232.tar.gz
 
-conda deactivate
+# Check what directory was created, then set that path in config.yaml
+ls /your/dbs/gtdbtk/
 ```
 
-See the [GTDB-tk documentation](https://ecogenomics.github.io/GTDBTk/installing/index.html) for details on reference data versions and alternative download methods. Current GTDB releases are listed at [gtdb.ecogenomics.org](https://gtdb.ecogenomics.org/).
+The `-c` flag on `wget` allows resuming interrupted downloads. After extraction, set `params.gtdbtk.db_path` to the directory containing the unpacked reference data.
+
+See the [GTDB-tk documentation](https://ecogenomics.github.io/GTDBTk/installing/index.html) and the [GTDB releases page](https://gtdb.ecogenomics.org/) for the current database version.
 
 > **Sprockett Lab (demon cluster):** All three databases are pre-downloaded and configured in `config.yaml` by default:
 > - CheckM2: `.../dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd`

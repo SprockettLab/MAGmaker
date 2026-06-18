@@ -126,7 +126,7 @@ all samples complete
 | `binners` | list: `concoct`, `metabat2`, `maxbin2` | |
 | `params.cutadapt` | adapter sequences and trim settings | |
 | `params.metaphlan` | `db_path` and `db_name` — **must be set per cluster** | MetaPhlAn4 uses different DB names |
-| `params.gtdbtk.db_path` | **required for MAG taxonomy** — path to GTDB-tk reference data (~85 GB) | download with `gtdbtk download_db` |
+| `params.gtdbtk.db_path` | **required for MAG taxonomy** — path to GTDB-tk reference data (~85 GB) | download manually from data.gtdb.ecogenomics.org; see README |
 | `params.checkm2.db_path` | optional — CheckM2 diamond database; auto-downloaded if empty | |
 | `params.gunc.db_path` | optional — GUNC database file; auto-downloaded if empty | |
 | `params.kraken2` / `params.bracken` | DB paths — **must be set per cluster** | |
@@ -271,12 +271,7 @@ To run a test, set `host_filter.genome` in `config.yaml` to the test genome FAST
     -t <threads> -k 35 -l 150
   ```
   The `-l` flag should match your read length (150 bp is typical). Run once per read length. This is a prerequisite for `taxonomy_kraken` to succeed.
-- **TODO — Download and configure GTDB-tk reference data:** The `params.gtdbtk.db_path` in `config.yaml` is currently empty. Download the reference data to demon before running `run_gtdbtk`:
-  ```bash
-  conda activate snakemake
-  gtdbtk download_db --db_version R220 --download_path /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk
-  ```
-  Then set `params.gtdbtk.db_path` in `config.yaml` to that path.
+- **TODO — Download GTDB-tk reference data for demon:** `params.gtdbtk.db_path` is set in `config.yaml` but the data has not yet been downloaded. Note: `gtdbtk download_db` is not a valid subcommand — manual download is required. Browse `https://data.gtdb.ecogenomics.org/releases/` for the latest release, download the `gtdbtk_data_r*.tar.gz` with `wget -c`, extract into `/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk/`, then update `params.gtdbtk.db_path` to the extracted directory.
 
 ---
 
