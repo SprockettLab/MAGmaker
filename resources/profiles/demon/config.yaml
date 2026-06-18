@@ -8,6 +8,11 @@ default-resources:
 jobs: 100
 use-conda: true
 conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs
+
+set-resources:
+  metaphlan:
+    mem_mb: 20000
+    runtime: 240
 latency-wait: 60
 rerun-incomplete: true
 keep-going: true
