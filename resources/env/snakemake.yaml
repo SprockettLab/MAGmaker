@@ -6,4 +6,5 @@ dependencies:
   - python>=3.7
   - snakemake>=9.0
   - snakemake-executor-plugin-slurm
+  - mamba
   - scikit-bio>=0.5
