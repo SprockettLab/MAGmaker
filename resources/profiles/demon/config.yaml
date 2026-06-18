@@ -7,7 +7,6 @@ default-resources:
 
 jobs: 100
 use-conda: true
-conda-frontend: mamba
 latency-wait: 60
 rerun-incomplete: true
 keep-going: true
