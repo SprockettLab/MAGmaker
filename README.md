@@ -42,7 +42,7 @@ non-host reads (taxonomy)
 
 ### Binning pipeline (`Snakefile-bin`)
 
-Extends the main pipeline with read mapping, binning, and bin refinement.
+Extends the main pipeline with read mapping, binning, bin refinement, quality control, and taxonomy.
 
 ```
 non-host reads + assemblies
@@ -56,6 +56,15 @@ sorted BAMs + contigs
 
 all bins
   └── DAS_Tool              bin refinement and dereplication → MAGs
+
+MAGs
+  ├── CheckM2               completeness and contamination assessment
+  ├── GUNC                  chimeric bin detection
+  ├── GTDB-tk               taxonomic classification
+  └── make_mag_summary      → output/mag_qc/mag_summary.tsv
+
+mag_summary.tsv  (editable)
+  └── rename_mags           → output/mag_qc/renamed_mags/*.fa
 ```
 
 ---
@@ -67,8 +76,9 @@ all bins
 - ~20 GB disk space for conda environments (built automatically on first run)
 - A host genome FASTA for filtering (e.g., human GRCh38, mouse GRCm39)
 - A [MetaPhlAn 4 database](https://huttenhower.sph.harvard.edu/metaphlan/) if running taxonomic profiling
+- A [GTDB-tk reference package](https://ecogenomics.github.io/GTDBTk/) (~85 GB) if running MAG taxonomy — path must be set in `config.yaml`
 
-All other tool dependencies (FastQC, Cutadapt, MEGAHIT, MetaPhlAn, sourmash, etc.) are installed automatically by Snakemake into isolated conda environments.
+All other tool dependencies (FastQC, Cutadapt, MEGAHIT, MetaPhlAn, sourmash, CheckM2, GUNC, etc.) are installed automatically by Snakemake into isolated conda environments. CheckM2 and GUNC databases are downloaded automatically on first run.
 
 ---
 
@@ -126,7 +136,11 @@ Key settings to review before running:
 | `host_filter.db_dir` | Directory for the bowtie2 host index |
 | `params.metaphlan.db_path` | Path to MetaPhlAn 4 database directory |
 | `params.metaphlan.db_name` | MetaPhlAn 4 database name (e.g., `mpa_vJan25_CHOCOPhlAnSGB_202503`) |
+| `params.gtdbtk.db_path` | **Required for MAG taxonomy** — path to GTDB-tk reference data directory |
+| `params.checkm2.db_path` | Optional — path to CheckM2 diamond database; auto-downloaded if empty |
+| `params.gunc.db_path` | Optional — path to GUNC database file; auto-downloaded if empty |
 | `threads.*` | Per-rule thread counts — scale to your hardware |
+| `mem_mb.*` | Memory limits — assembly rules auto-scale based on input size (up to the configured ceiling) |
 
 ### `binning.txt` (binning pipeline only)
 
@@ -147,8 +161,15 @@ snakemake --cores 8 --use-conda -n
 # Main pipeline
 snakemake --cores 8 --use-conda
 
-# Binning pipeline
-snakemake --snakefile Snakefile-bin --cores 8 --use-conda
+# Binning pipeline (through DAS_Tool)
+snakemake --snakefile Snakefile-bin --cores 8 --use-conda select_bins
+
+# MAG QC and taxonomy (runs after select_bins)
+snakemake --snakefile Snakefile-bin --cores 8 --use-conda make_mag_summary
+
+# Rename MAGs using the summary table
+# Edit output/mag_qc/mag_summary.tsv first if you want custom names, then:
+snakemake --snakefile Snakefile-bin --cores 8 --use-conda rename_mags
 ```
 
 ### SLURM (demon cluster)
@@ -161,8 +182,12 @@ conda activate snakemake
 # Main pipeline
 snakemake --profile resources/profiles/demon
 
-# Binning pipeline
-snakemake --snakefile Snakefile-bin --profile resources/profiles/demon
+# Binning pipeline (through DAS_Tool)
+snakemake --snakefile Snakefile-bin --profile resources/profiles/demon select_bins
+
+# MAG QC, taxonomy, and renaming
+snakemake --snakefile Snakefile-bin --profile resources/profiles/demon make_mag_summary
+snakemake --snakefile Snakefile-bin --profile resources/profiles/demon rename_mags
 ```
 
 To override resources for a specific rule:
@@ -174,7 +199,7 @@ snakemake --profile resources/profiles/demon \
 
 SLURM logs are written to `.snakemake/slurm_logs/{rule}/`. Rule logs (stderr/stdout from the tools themselves) go to `output/logs/{rule}/`.
 
-> **Note:** Assembly rules (MEGAHIT, metaSPAdes) request 256 GB RAM by default. Adjust `mem_mb` in `config.yaml` if your nodes have different memory limits.
+> **Note:** Assembly rules auto-scale memory based on input size (up to the `mem_mb` ceiling in `config.yaml`). GTDB-tk requests 128 GB by default; MetaPhlAn 4 requests 32 GB. Both can be overridden with `--set-resources`.
 
 ### Running on test data
 
@@ -193,22 +218,49 @@ snakemake --cores 4 --use-conda
 output/
 ├── qc/
 │   ├── multiqc/multiqc.html              QC report (pre-trim through host removal)
-│   └── host_filter/nonhost/              host-filtered FASTQ files
+│   └── host_filter/nonhost/             host-filtered FASTQ files
 ├── assemble/
-│   ├── megahit/{sample}/                 MEGAHIT assemblies
-│   ├── metaspades/{sample}/              metaSPAdes assemblies
-│   └── multiqc_assemble/multiqc.html     assembly QC report
+│   ├── megahit/{sample}/                MEGAHIT assemblies
+│   ├── metaspades/{sample}/             metaSPAdes assemblies
+│   ├── assembly_stats.tsv               merged per-sample assembly stats (all assemblers)
+│   └── multiqc_assemble/multiqc.html    assembly QC report
 ├── prototype_selection/
-│   ├── sourmash_plot/                    pairwise similarity heatmap
+│   ├── sourmash_plot/                   pairwise similarity heatmap
 │   └── prototype_selection/
-│       └── selected_prototypes.yaml      representative sample selection
+│       └── selected_prototypes.yaml     representative sample selection
 ├── profile/
 │   └── metaphlan/
-│       ├── profiles/{sample}.txt         per-sample MetaPhlAn profiles
-│       └── merged_abundance_table.txt    merged taxonomy table (all samples)
-└── bins/                                 (binning pipeline only)
-    └── das_tool/{sample}/                refined MAG bins
+│       ├── profiles/{sample}.txt        per-sample MetaPhlAn profiles
+│       └── merged_abundance_table.txt   merged taxonomy table (all samples)
+├── selected_bins/                        (binning pipeline only)
+│   └── {mapper}/DAS_Tool_Fastas/{sample}/  per-sample DAS_Tool MAG bins
+└── mag_qc/                               (binning pipeline only)
+    ├── checkm2/{mapper}/{sample}/        CheckM2 quality reports
+    ├── gunc/{mapper}/{sample}/           GUNC chimera detection results
+    ├── gtdbtk/{mapper}/{sample}/         GTDB-tk taxonomy outputs
+    ├── mag_summary.tsv                   combined MAG table (editable — see below)
+    └── renamed_mags/                     MAG FASTAs with final names
 ```
+
+### MAG renaming workflow
+
+After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one row per MAG with columns including:
+
+| Column | Description |
+|---|---|
+| `mag_id` | Global sequential ID (`MAG_0001` … `MAG_N`) |
+| `new_name` | Proposed filename (`MAG_0001__Roseburia_intestinalis`) — **editable** |
+| `original_name` | DAS_Tool bin name |
+| `original_path` | Path to source FASTA |
+| `sample_id` | Sample the MAG was assembled from |
+| `winning_binner` | Which binner (metabat2 / maxbin2 / concoct) DAS_Tool selected |
+| `domain` … `species` | GTDB-tk taxonomy in separate columns |
+| `gtdbtk_classification` | Full GTDB-tk classification string |
+| `completeness` / `contamination` / `quality_score` | CheckM2 metrics |
+| `gunc_clade_separation_score` / `gunc_pass` | GUNC chimera metrics |
+| `total_length_bp` / `num_contigs` / `gc_percent` / `N50` | Assembly stats |
+
+To rename MAGs: edit the `new_name` column in the table, then re-run `rename_mags`. Snakemake detects the edited file is newer than the output and re-runs automatically.
 
 ---
 

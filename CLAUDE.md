@@ -80,7 +80,7 @@ nonhost reads (profiling)
 
 ### Binning pipeline (`Snakefile-bin`)
 
-Includes: `qc.smk`, `assemble.smk`, `mapping.smk`, `binning.smk`, `selected_bins.smk`
+Includes: `qc.smk`, `assemble.smk`, `mapping.smk`, `binning.smk`, `selected_bins.smk`, `mag_qc.smk`
 
 The `binning.txt` file defines which samples' reads get mapped to which samples' contigs. `Read_Groups` and `Contig_Groups` columns contain comma-separated group labels; all read-samples in a group are mapped to all contig-samples in the same group.
 
@@ -96,9 +96,21 @@ sorted BAMs + contigs
   └─ concoct path:   cut_up_fasta → make_concoct_coverage_table → run_concoct → merge_cutup_clustering → extract_fasta_bins
 
 all bins → [Fasta_to_Scaffolds2Bin for each binner] → run_DAS_Tool → consolidate_DAS_Tool_bins
+  → output/selected_bins/{mapper}/DAS_Tool_Fastas/{sample}/   (per-sample subdirectory)
+
+MAGs (per sample)
+  ├─ run_checkm2    → output/mag_qc/checkm2/{mapper}/{sample}/quality_report.tsv
+  ├─ run_gunc       → output/mag_qc/gunc/{mapper}/{sample}/   (.done touch file)
+  └─ run_gtdbtk     → output/mag_qc/gtdbtk/{mapper}/{sample}/ (.done touch file)
+
+all samples complete
+  └─ make_mag_summary  → output/mag_qc/mag_summary.tsv   (globally numbered, editable)
+  └─ rename_mags       → output/mag_qc/renamed_mags/*.fa  (reads new_name from table)
 ```
 
-**Top-level rules in Snakefile-bin:** `select_bins`, `bin_all`, `map_all`
+**Top-level rules in Snakefile-bin:** `select_bins`, `bin_all`, `map_all`, `make_mag_summary`, `rename_mags`
+
+**MAG renaming workflow:** `make_mag_summary` assigns global IDs (`MAG_0001`…`MAG_N`) sorted by sample then bin name, looks up GTDB-tk taxonomy to build the `new_name` label (`MAG_0001__Roseburia_intestinalis`), and writes the full table. Users can edit `new_name` in `mag_summary.tsv` and re-run `snakemake rename_mags` — Snakemake detects the edited file is newer and re-runs automatically. The `rename_mags` rule clears the `renamed_mags/` directory before copying so stale files don't accumulate.
 
 ---
 
@@ -114,11 +126,14 @@ all bins → [Fasta_to_Scaffolds2Bin for each binner] → run_DAS_Tool → conso
 | `binners` | list: `concoct`, `metabat2`, `maxbin2` | |
 | `params.cutadapt` | adapter sequences and trim settings | |
 | `params.metaphlan` | `db_path` and `db_name` — **must be set per cluster** | MetaPhlAn4 uses different DB names |
+| `params.gtdbtk.db_path` | **required for MAG taxonomy** — path to GTDB-tk reference data (~85 GB) | download with `gtdbtk download_db` |
+| `params.checkm2.db_path` | optional — CheckM2 diamond database; auto-downloaded if empty | |
+| `params.gunc.db_path` | optional — GUNC database file; auto-downloaded if empty | |
 | `params.kraken2` / `params.bracken` | DB paths — **must be set per cluster** | |
 | `host_filter.genome` | path to host genome FASTA | varies by project |
 | `host_filter.db_dir` | directory for bowtie2 index of host genome | |
-| `threads.*` | per-rule thread counts | scale to cluster node sizes |
-| `mem_mb.*` | memory for spades/megahit in MB | |
+| `threads.*` | per-rule thread counts | scale to cluster node sizes; checkm2=16, gunc=8, gtdbtk=16 |
+| `mem_mb.*` | memory ceilings in MB | assembly rules auto-scale based on input size; checkm2=32000, gtdbtk=128000 |
 
 ### `samples.txt`
 
@@ -148,6 +163,8 @@ Each module has its own environment YAML in `resources/env/`:
 | `concoct_linux.yaml` | binning.smk (concoct rules) | Linux-specific |
 | `concoct_osx.yaml` | — | macOS-specific (not used on clusters) |
 | `selected_bins.yaml` | selected_bins.smk | das_tool |
+| `mag_qc.yaml` | mag_qc.smk | checkm2, gunc, pandas, numpy |
+| `gtdbtk.yaml` | mag_qc.smk (run_gtdbtk) | gtdbtk>=2.0; separate env due to dependency conflicts |
 | `profile.yaml` | profile.smk | kraken2, bracken, krona, metaphlan, humann |
 | `prototype_selection.yaml` | prototype_selection.smk | sourmash, scikit-bio |
 | `sourmash.yaml` | sourmash.smk (standalone) | sourmash, scikit-bio |
@@ -242,22 +259,24 @@ To run a test, set `host_filter.genome` in `config.yaml` to the test genome FAST
 
 ## Known issues and quirks
 
-- **Duplicate directives in qc.smk:** Fixed — `merge_units` and `fastqc_post_trim` had duplicate `log:` and `benchmark:` blocks; cleaned up.
-- **`os` not imported in prototype_selection.smk / sourmash.smk:** Fixed — changed `from os import path` to `import os` in both files.
-- **`host_base` path bug in qc.smk:** Fixed — the `host_base` variable was computed as `join(db_dir, splitext(genome)[0])`, which concatenated the full genome path (including its directory) onto `db_dir`, producing a double-path when `genome` was a relative path. Fixed to `join(db_dir, splitext(basename(genome))[0])` so only the filename stem is joined.
-- **MetaPhlAn upgraded to v4:** `profile.smk`, `profile.yaml`, and `config.yaml` updated. DB path set to `/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/metaphlan`, DB name `mpa_vJan25_CHOCOPhlAnSGB_202503`.
-- **Kraken2/Bracken DB paths updated:** Both point to `Kraken2_db_Standard` on demon. The `bracken-db` path is the same as `db` since Bracken databases live alongside the Kraken2 database. To use a different DB (e.g., GTDB, baboon, vervet) change both paths in `config.yaml`.
-- **TODO — Build Bracken database for Kraken2_db_Standard:** Bracken requires `.kmer_distrib` files that are generated separately from the Kraken2 build. Run on demon before using the Kraken2/Bracken profiling rules:
+- **MEGAHIT memory units:** The shell command passes `$(({resources.mem_mb}*1024*1024))` bytes. Since `mem_mb` is in megabytes, this is `MB × 1024 × 1024 = bytes`, which is correct for MEGAHIT's `--memory` flag (bytes). Do not change this. Assembly rules now auto-scale `mem_mb` based on input size (`max(16000, input.size_mb * 10)`) up to the config ceiling.
+- **`sourmash.smk` is standalone:** This file is not included by either Snakefile. It is an older standalone version with different output paths. Use `prototype_selection.smk` instead.
+- **`concoct` uses `concoct_linux.yaml`:** Hard-coded to the Linux environment file. Will not work on macOS without changing the `conda:` directive to `concoct_osx.yaml`.
+- **Mixed Snakemake wrapper versions:** `qc.smk` uses `0.72.0/bio/fastqc` and `0.17.4/bio/cutadapt/pe` (old format) but `v3.1.0/bio/multiqc` (new format). Consider updating all wrappers to a consistent version.
+- **GTDB-tk archaeal summary may be absent:** `run_gtdbtk` uses a `.done` touch file as output rather than the actual summary TSVs, because `gtdbtk.ar53.summary.tsv` is not produced when no archaeal MAGs are present. The `make_mag_summary` script handles this by checking for both `bac120` and `ar53` files with `os.path.exists()`.
+- **GUNC output filename varies by DB version:** The script globs for `*.maxCSS_level.tsv` rather than hardcoding the filename, since the exact name includes the database version string.
+- **TODO — Build Bracken database for Kraken2_db_Standard:** Bracken requires `.kmer_distrib` files generated separately from the Kraken2 build. Run on demon before using the Kraken2/Bracken profiling rules:
   ```bash
   bracken-build -d /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/kraken2/Kraken2_db_Standard \
     -t <threads> -k 35 -l 150
   ```
-  The `-l` flag should match your read length (150 bp is typical for Illumina short reads). Run once per read length you intend to use. This is a prerequisite for `taxonomy_kraken` to succeed.
-- **Mixed Snakemake wrapper versions:** `qc.smk` uses `0.72.0/bio/fastqc` and `0.17.4/bio/cutadapt/pe` (old format) but `v3.1.0/bio/multiqc` (new format). This can cause version incompatibilities depending on Snakemake version. Consider updating all wrappers to a consistent version.
-- **MEGAHIT memory units:** The shell command passes `$(({resources.mem_mb}*1024*1024))` bytes. Since `mem_mb` is in megabytes, this is `MB × 1024 × 1024 = bytes`, which is correct for MEGAHIT's `--memory` flag (bytes). Do not change this.
-- **`sourmash.smk` is standalone:** This file is not included by either Snakefile. It appears to be an older standalone version with different output paths. Use `prototype_selection.smk` instead (it is included in the main Snakefile).
-- **`metaphlan` rule missing `db_name` param:** The `metaphlan` rule in `profile.smk` does not pass `--index` to MetaPhlAn. If MetaPhlAn4 is used with a non-default database name, the `--index` flag must be added to the shell command.
-- **`concoct` uses `concoct_linux.yaml`:** Hard-coded to the Linux environment file. Will not work on macOS without changing the `conda:` directive to `concoct_osx.yaml`.
+  The `-l` flag should match your read length (150 bp is typical). Run once per read length. This is a prerequisite for `taxonomy_kraken` to succeed.
+- **TODO — Download and configure GTDB-tk reference data:** The `params.gtdbtk.db_path` in `config.yaml` is currently empty. Download the reference data to demon before running `run_gtdbtk`:
+  ```bash
+  conda activate snakemake
+  gtdbtk download_db --db_version R220 --download_path /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk
+  ```
+  Then set `params.gtdbtk.db_path` in `config.yaml` to that path.
 
 ---
 
@@ -285,10 +304,9 @@ git remote rename sprockettlab origin
 
 ## Planned improvements
 
-- Update MetaPhlAn to version 4 (requires new DB name in config, updated `--index` flag in shell command, possibly updated profile.yaml)
-- Add SLURM profile for the demon cluster
-- Standardize Snakemake wrapper versions across all rule files
-- Fix `os` import in `prototype_selection.smk` and `sourmash.smk`
-- Update README to reflect current pipeline completeness (binning is complete, not "under development")
-- Add Kraken2/Bracken documentation and cluster DB paths
-- Evaluate whether `sourmash.smk` should be deleted or merged
+- Standardize Snakemake wrapper versions across all rule files (qc.smk mixes 0.72.0/bio/fastqc, 0.17.4/bio/cutadapt/pe, and v3.1.0/bio/multiqc)
+- Evaluate whether `sourmash.smk` should be deleted (it is a standalone orphan not included by either Snakefile; `prototype_selection.smk` is the active version)
+- Add co-assembly mode: pool reads across samples → single MEGAHIT run → map all samples back
+- Add HUMAnN 3 functional profiling downstream of MetaPhlAn
+- Add StrainPhlAn strain-level profiling (uses the .sam.bz2 files already produced by the metaphlan rule)
+- Add MultiQC step for the binning pipeline mapping outputs
