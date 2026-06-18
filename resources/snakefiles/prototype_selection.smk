@@ -147,7 +147,7 @@ def prototype_selection_destructive_maxdist(dm, num_prototypes, seedset=None):
     # other. "Removing" works by tagging its distance-sum as infinity. Plus, we
     # decrease the number of available elements by one.
     minElmIdx = currDists.argmin()
-    currDists[minElmIdx], numRemain = np.infty, numRemain-1
+    currDists[minElmIdx], numRemain = np.inf, numRemain-1
 
     # continue until only num_prototype elements are left
     while (numRemain > num_prototypes):
@@ -157,13 +157,13 @@ def prototype_selection_destructive_maxdist(dm, num_prototypes, seedset=None):
         # find the next element to be removed, again as the one that is
         # closest to all others
         minElmIdx = currDists.argmin()
-        currDists[minElmIdx], numRemain = np.infty, numRemain-1
+        currDists[minElmIdx], numRemain = np.inf, numRemain-1
 
     # return a list of IDs of the surviving elements, which are the found
     # prototypes.
     return [dm.ids[idx]
             for idx, dist in enumerate(currDists)
-            if dist != np.infty]
+            if dist != np.inf]
 
 
 rule sourmash_sketch_reads:
