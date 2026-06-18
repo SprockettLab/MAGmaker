@@ -76,9 +76,9 @@ mag_summary.tsv  (editable)
 - ~20 GB disk space for conda environments (built automatically on first run)
 - A host genome FASTA for filtering (e.g., human GRCh38, mouse GRCm39)
 - A [MetaPhlAn 4 database](https://huttenhower.sph.harvard.edu/metaphlan/) if running taxonomic profiling
-- A [GTDB-tk reference package](https://ecogenomics.github.io/GTDBTk/) (~85 GB) if running MAG taxonomy — path must be set in `config.yaml`
+- A [GTDB-tk reference package](https://ecogenomics.github.io/GTDBTk/) (~85 GB) if running MAG taxonomy — see [Database setup](#database-setup) below
 
-All other tool dependencies (FastQC, Cutadapt, MEGAHIT, MetaPhlAn, sourmash, CheckM2, GUNC, etc.) are installed automatically by Snakemake into isolated conda environments. CheckM2 and GUNC databases are downloaded automatically on first run.
+All other tool dependencies (FastQC, Cutadapt, MEGAHIT, MetaPhlAn, sourmash, CheckM2, GUNC, etc.) are installed automatically by Snakemake into isolated conda environments.
 
 ---
 
@@ -98,6 +98,51 @@ conda activate snakemake
 ```
 
 All other environments (qc, assemble, profile, etc.) are created automatically the first time a rule runs, via `--use-conda`.
+
+---
+
+## Database setup
+
+### CheckM2 and GUNC
+
+CheckM2 and GUNC will automatically download their databases on first use if no path is set in `config.yaml`. Downloads land in the tool's default cache directory (`~/.cache/checkm2/` and `~/.gunc/` respectively) and will repeat for every new user unless a shared path is configured.
+
+To pre-download to a shared location:
+
+```bash
+mamba create -n db_setup -c conda-forge -c bioconda checkm2 gunc -y
+conda activate db_setup
+
+checkm2 database --download --path /your/shared/dbs/checkm2/
+gunc download_db /your/shared/dbs/gunc/
+
+conda deactivate
+
+# Note the exact filenames that were created
+ls /your/shared/dbs/checkm2/
+ls /your/shared/dbs/gunc/
+```
+
+Then set `params.checkm2.db_path` to the downloaded `.dmnd` file and `params.gunc.db_path` to the downloaded `.db` file in `config.yaml`. Leaving either path empty restores auto-download behavior.
+
+### GTDB-tk
+
+GTDB-tk requires a reference data package (~85 GB) that must be downloaded before the taxonomy step will run. Set `params.gtdbtk.db_path` in `config.yaml` to the directory containing this data.
+
+```bash
+mamba create -n gtdbtk_setup -c conda-forge -c bioconda gtdbtk -y
+conda activate gtdbtk_setup
+
+mkdir -p /your/shared/dbs/gtdbtk
+gtdbtk download_db --db_version R220 \
+  --download_path /your/shared/dbs/gtdbtk/
+
+conda deactivate
+```
+
+See the [GTDB-tk documentation](https://ecogenomics.github.io/GTDBTk/installing/index.html) for details on reference data versions and alternative download methods. Current GTDB releases are listed at [gtdb.ecogenomics.org](https://gtdb.ecogenomics.org/).
+
+> **Sprockett Lab (demon cluster):** All three databases are pre-downloaded to `/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/`. The GTDB-tk path is set in `config.yaml` by default. After downloading CheckM2 and GUNC, update `params.checkm2.db_path` and `params.gunc.db_path` with the filenames created in their respective subdirectories.
 
 ---
 

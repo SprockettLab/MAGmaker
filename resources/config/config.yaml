@@ -71,11 +71,11 @@ params:
   das_tool:
     search_engine: 'diamond'
   gtdbtk:
-    db_path: ""   # required: path to GTDB-tk reference data (~85 GB); download with: gtdbtk download_db
+    db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk"  # set to "" and see README for download instructions on other systems
   checkm2:
-    db_path: ""   # optional: path to CheckM2 diamond database; auto-downloaded if empty
+    db_path: ""   # auto-downloaded on first run; set to /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkm2/<filename>.dmnd after downloading
   gunc:
-    db_path: ""   # optional: path to GUNC database (.db file); auto-downloaded if empty
+    db_path: ""   # auto-downloaded on first run; set to /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gunc/<filename>.db after downloading
   kraken2:
     levels: 'P,C,O,F,G,S'
     db: '/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/kraken2/Kraken2_db_Standard'
