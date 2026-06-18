@@ -4,5 +4,6 @@ channels:
   - defaults
 dependencies:
   - python>=3.7
-  - snakemake>=6.4.0
+  - snakemake>=9.0
+  - snakemake-executor-plugin-slurm
   - scikit-bio>=0.5

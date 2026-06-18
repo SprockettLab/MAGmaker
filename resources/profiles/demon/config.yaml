@@ -1,27 +1,13 @@
-cluster: "mkdir -p output/slurm_logs/{rule} && sbatch
-  --partition={resources.partition}
-  --job-name=smk-{rule}
-  --ntasks=1
-  --cpus-per-task={threads}
-  --mem={resources.mem_mb}M
-  --time={resources.runtime}
-  --output=output/slurm_logs/{rule}/%j.out
-  --error=output/slurm_logs/{rule}/%j.err"
+executor: slurm
 
 default-resources:
-  - partition=defq
-  - mem_mb=8000      # 8 GB default; defq charges 4 GB/CPU, so spec this explicitly
-  - runtime=120      # minutes; defq default is 120, max is 90 days
-
-# Heavy rules override defaults via per-rule resources in config.yaml (mem_mb.*)
-# or inline in the Snakemake call:
-#   snakemake --profile resources/profiles/demon --set-resources megahit:mem_mb=256000
+  slurm_partition: defq
+  mem_mb: 8000
+  runtime: 120        # minutes; defq default is 120, max is 90 days
 
 jobs: 100
 use-conda: true
 latency-wait: 60
 rerun-incomplete: true
 keep-going: true
-
-# Print shell commands for debugging
 printshellcmds: true
