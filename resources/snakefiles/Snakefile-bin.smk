@@ -79,11 +79,12 @@ include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/mapping.smk"
 include: "resources/snakefiles/binning.smk"
 include: "resources/snakefiles/selected_bins.smk"
+include: "resources/snakefiles/mag_qc.smk"
 
 
 rule select_bins:
     input:
-        lambda wildcards: expand("output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}.done",
+        lambda wildcards: expand("output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done",
                                  mapper=config['mappers'],
                                  contig_sample=contig_pairings.keys())
 

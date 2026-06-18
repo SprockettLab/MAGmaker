@@ -70,6 +70,12 @@ params:
     min_contig_length: 1500
   das_tool:
     search_engine: 'diamond'
+  gtdbtk:
+    db_path: ""   # required: path to GTDB-tk reference data (~85 GB); download with: gtdbtk download_db
+  checkm2:
+    db_path: ""   # optional: path to CheckM2 diamond database; auto-downloaded if empty
+  gunc:
+    db_path: ""   # optional: path to GUNC database (.db file); auto-downloaded if empty
   kraken2:
     levels: 'P,C,O,F,G,S'
     db: '/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/kraken2/Kraken2_db_Standard'
@@ -94,10 +100,15 @@ threads:
   run_maxbin2: 8
   run_concoct: 8
   run_DAS_Tool: 8
+  checkm2: 16
+  gunc: 8
+  gtdbtk: 16
 
 mem_mb:
   spades: 256000
   megahit: 256000
+  checkm2: 32000
+  gtdbtk: 128000
 
 host_filter:
   db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14"

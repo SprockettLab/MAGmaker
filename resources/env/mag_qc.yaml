@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python>=3.9
+  - checkm2>=1.0
+  - gunc>=1.0
+  - pandas
+  - numpy

@@ -20,7 +20,10 @@ rule metaspades:
     log:
         "output/logs/assemble/metaspades/{sample}.log"
     resources:
-        mem_mb=config['mem_mb']['spades']
+        mem_mb=lambda wildcards, input: min(
+            config['mem_mb']['spades'],
+            max(16000, input.size_mb * 10)
+        )
     shell:
         """
         # Make temporary output directory
@@ -61,7 +64,10 @@ rule megahit:
     log:
         "output/logs/assemble/megahit/{sample}.log"
     resources:
-        mem_mb=config['mem_mb']['megahit']
+        mem_mb=lambda wildcards, input: min(
+            config['mem_mb']['megahit'],
+            max(16000, input.size_mb * 10)
+        )
     shell:
         """
         megahit -t {threads} \
@@ -153,6 +159,44 @@ rule metaquast:
           {params.extra} \
           {input}
         """
+
+rule merge_assembly_stats:
+    """
+    Merges per-sample QUAST report.tsv files into a single project-wide assembly stats table.
+    """
+    input:
+        lambda wildcards: expand(
+            "output/assemble/{assembler}/quast/{sample}/report.txt",
+            assembler=config['assemblers'],
+            sample=samples
+        )
+    output:
+        "output/assemble/assembly_stats.tsv"
+    log:
+        "output/logs/assemble/merge_assembly_stats.log"
+    run:
+        import os
+        import pandas as pd
+        frames = []
+        for report_txt in input:
+            parts = report_txt.split('/')
+            assembler = parts[2]
+            sample = parts[4]
+            report_tsv = report_txt.replace('report.txt', 'report.tsv')
+            if not os.path.exists(report_tsv):
+                continue
+            df = pd.read_csv(report_tsv, sep='\t', index_col=0, header=0)
+            row = df.iloc[:, 0].to_dict()
+            row['sample'] = sample
+            row['assembler'] = assembler
+            frames.append(row)
+        if frames:
+            merged = pd.DataFrame(frames)
+            cols = ['sample', 'assembler'] + [c for c in merged.columns if c not in ('sample', 'assembler')]
+            merged[cols].to_csv(output[0], sep='\t', index=False)
+        else:
+            open(output[0], 'w').close()
+
 
 rule multiqc_metaquast:
     input:
