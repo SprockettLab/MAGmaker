@@ -142,7 +142,10 @@ conda deactivate
 
 See the [GTDB-tk documentation](https://ecogenomics.github.io/GTDBTk/installing/index.html) for details on reference data versions and alternative download methods. Current GTDB releases are listed at [gtdb.ecogenomics.org](https://gtdb.ecogenomics.org/).
 
-> **Sprockett Lab (demon cluster):** All three databases are pre-downloaded to `/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/`. The GTDB-tk path is set in `config.yaml` by default. After downloading CheckM2 and GUNC, update `params.checkm2.db_path` and `params.gunc.db_path` with the filenames created in their respective subdirectories.
+> **Sprockett Lab (demon cluster):** All three databases are pre-downloaded and configured in `config.yaml` by default:
+> - CheckM2: `.../dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd`
+> - GUNC: `.../dbs/gunc/gunc_db_progenomes2.1.dmnd`
+> - GTDB-tk: `.../dbs/gtdbtk/`
 
 ---
 
