@@ -2,7 +2,7 @@
 
 A Snakemake pipeline for end-to-end processing of paired-end metagenomic shotgun sequencing data. MAGmaker takes raw FASTQ files through quality control, host read removal, assembly, taxonomic profiling, and — optionally — binning to produce metagenome-assembled genomes (MAGs).
 
-Developed in the [Moeller Lab](https://moellerlab.com) at Cornell University and maintained by [SprockettLab](https://github.com/SprockettLab).
+Developed in the [Moeller Lab](https://moellerlab.com) at Princeton University and maintained by the [Sprockett Lab](https://www.sprockettlab.com/) at Wake Forest University School of Medicine.
 
 ---
 
