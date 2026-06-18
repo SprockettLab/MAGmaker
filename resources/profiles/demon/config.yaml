@@ -11,7 +11,7 @@ conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snak
 
 set-resources:
   metaphlan:
-    mem_mb: 20000
+    mem_mb: 32000
     runtime: 240
 latency-wait: 60
 rerun-incomplete: true
