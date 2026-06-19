@@ -13,6 +13,9 @@ set-resources:
   metaphlan:
     mem_mb: 32000
     runtime: 240
+  taxonomy_kraken:
+    mem_mb: 220000
+    runtime: 240
 latency-wait: 60
 rerun-incomplete: true
 keep-going: true
