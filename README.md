@@ -17,9 +17,9 @@ Runs QC through taxonomic profiling and prototype (representative sample) select
 ```
 raw reads (FASTQ)
   ├── FastQC (pre-trim)
-  ├── Cutadapt              adapter and quality trimming
+  ├── fastp / Cutadapt      adapter and quality trimming (configurable; fastp default)
   ├── FastQC (post-trim)
-  ├── merge across lanes    cat reads per sample across sequencing units
+  ├── merge across lanes    symlink if single unit; cat if multiple
   ├── bowtie2               host read removal
   ├── FastQC (post-host)
   └── MultiQC               → output/qc/multiqc/multiqc.html
@@ -184,6 +184,7 @@ Key settings to review before running:
 
 | Parameter | Description |
 |---|---|
+| `trimmer` | Trimmer to use: `fastp` (default) or `cutadapt` |
 | `assemblers` | Which assembler(s) to use: `metaspades`, `megahit`, or both |
 | `host_filter.genome` | Path to host genome FASTA (used to build bowtie2 index) |
 | `host_filter.db_dir` | Directory for the bowtie2 host index |

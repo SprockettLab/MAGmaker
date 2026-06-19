@@ -121,10 +121,12 @@ all samples complete
 | Section | Purpose | Notes |
 |---|---|---|
 | `samples` / `units` / `binning` | paths to metadata TSVs | |
+| `trimmer` | `fastp` (default) or `cutadapt` | fastp auto-detects adapters; cutadapt requires adapter sequences in `params.cutadapt` |
 | `assemblers` | list: `metaspades`, `megahit` | comment out to skip one |
 | `mappers` | list: `minimap2`, `bowtie2` | used in binning pipeline |
 | `binners` | list: `concoct`, `metabat2`, `maxbin2` | |
-| `params.cutadapt` | adapter sequences and trim settings | |
+| `params.fastp.extra` | additional fastp flags | fastp auto-detects adapters by default |
+| `params.cutadapt` | adapter sequences and trim settings | only used when `trimmer: cutadapt` |
 | `params.metaphlan` | `db_path` and `db_name` — **must be set per cluster** | MetaPhlAn4 uses different DB names |
 | `params.gtdbtk.db_path` | **required for MAG taxonomy** — path to GTDB-tk reference data (~85 GB) | download manually from data.gtdb.ecogenomics.org; see README |
 | `params.checkm2.db_path` | optional — CheckM2 diamond database; auto-downloaded if empty | |
@@ -156,6 +158,7 @@ Each module has its own environment YAML in `resources/env/`:
 | File | Used by | Notes |
 |---|---|---|
 | `snakemake.yaml` | top-level | install this first |
+| `fastp.yaml` | qc.smk (fastp_pe rule) | default trimmer |
 | `qc.yaml` | qc.smk | bowtie2, samtools, pigz, tbb=2020.2 (pinned) |
 | `assemble.yaml` | assemble.smk | spades, megahit, quast |
 | `mapping.yaml` | mapping.smk | bowtie2, samtools, minimap2, tbb=2020.2 (pinned) |

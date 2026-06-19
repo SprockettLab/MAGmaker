@@ -10,6 +10,8 @@ reads:
   - R1
   - R2
 
+trimmer: fastp  # fastp or cutadapt
+
 assemblers:
 #  - metaspades
   - megahit
@@ -31,6 +33,8 @@ profilers:
   - bracken
 
 params:
+  fastp:
+    extra: ""  # fastp auto-detects adapters; add flags here to override (e.g. --disable_adapter_trimming)
   cutadapt:
     adapter: '-a GATCGGAAGAGC -a GGGGGGGGGGGGGGGGGGGG -A GATCGGAAGAGC -A GGGGGGGGGGGGGGGGGGGG'
     other: "-u 10 -U 10 --minimum-length 1 --nextseq-trim 20"
@@ -83,6 +87,7 @@ params:
 
 threads:
   fastqc: 1
+  fastp: 8
   cutadapt_pe: 4
   host_filter: 8
   spades: 8
