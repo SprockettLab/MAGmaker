@@ -1,5 +1,5 @@
 Sample
-amy
-bob
-carl
-diane
+John
+Paul
+George
+Ringo

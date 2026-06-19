@@ -1,5 +1,5 @@
 Sample	Contigs	Read_Groups	Contig_Groups
-amy	output/assemble/megahit/amy.contigs.fasta	A	A
-bob	output/assemble/megahit/bob.contigs.fasta	A	A
-carl	output/assemble/megahit/carl.contigs.fasta		A
-diane	output/assemble/megahit/diane.contigs.fasta		A
+John	output/assemble/megahit/John.contigs.fasta	A	A
+Paul	output/assemble/megahit/Paul.contigs.fasta	A	A
+George	output/assemble/megahit/George.contigs.fasta		A
+Ringo	output/assemble/megahit/Ringo.contigs.fasta		A
