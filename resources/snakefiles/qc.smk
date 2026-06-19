@@ -99,8 +99,8 @@ rule fastp_pe:
 
 rule cutadapt_pe:
     input:
-        lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R1'),
-        lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R2')
+        R1=lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R1'),
+        R2=lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R2')
     output:
         fastq1=temp("output/qc/cutadapt/{sample}.{unit}.R1.fastq.gz"),
         fastq2=temp("output/qc/cutadapt/{sample}.{unit}.R2.fastq.gz"),
@@ -114,8 +114,19 @@ rule cutadapt_pe:
         "output/logs/qc/cutadapt/{sample}.{unit}.log"
     threads:
         config['threads']['cutadapt_pe']
-    wrapper:
-        "v3.1.0/bio/cutadapt/pe"
+    conda:
+        "../env/cutadapt.yaml"
+    shell:
+        """
+        cutadapt \
+            {params.adapters} \
+            {params.extra} \
+            -j {threads} \
+            -o {output.fastq1} \
+            -p {output.fastq2} \
+            {input.R1} {input.R2} \
+            > {output.qc} 2> {log}
+        """
 
 
 rule fastqc_post_trim:
