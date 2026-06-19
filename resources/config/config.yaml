@@ -60,7 +60,7 @@ params:
   prototypes:
     min_seqs: 50 # recommended: 10000000
     max_seqs: 100000000
-    n: 12
+    n: 10
   metabat2:
     extra: '--verbose'
     min_contig_length: 1500 # Minimum size of a contig for binning (should be >=1500).
