@@ -53,7 +53,7 @@ rule fastqc_pre_trim:
     threads:
         config['threads']['fastqc']
     wrapper:
-        "v3.1.0/bio/fastqc"
+        "0.72.0/bio/fastqc"
 
 
 rule fastp_pe:
@@ -96,8 +96,8 @@ rule cutadapt_pe:
         fastq2=temp("output/qc/cutadapt/{sample}.{unit}.R2.fastq.gz"),
         qc="output/logs/qc/cutadapt/{sample}.{unit}.txt"
     params:
-        adapters=config["params"]["cutadapt"]['adapter'],
-        extra=config["params"]["cutadapt"]['other']
+        "{} {}".format(config["params"]["cutadapt"]['adapter'],
+                       config["params"]["cutadapt"]['other'])
     benchmark:
         "output/benchmarks/qc/cutadapt/{sample}.{unit}_benchmark.txt"
     log:
@@ -105,7 +105,7 @@ rule cutadapt_pe:
     threads:
         config['threads']['cutadapt_pe']
     wrapper:
-        "v3.1.0/bio/cutadapt/pe"
+        "0.17.4/bio/cutadapt/pe"
 
 
 rule fastqc_post_trim:
@@ -120,7 +120,7 @@ rule fastqc_post_trim:
     threads:
         config['threads']['fastqc']
     wrapper:
-        "v3.1.0/bio/fastqc"
+        "0.72.0/bio/fastqc"
 
 
 rule merge_units:
@@ -216,7 +216,7 @@ rule fastqc_post_host:
     threads:
         config['threads']['fastqc']
     wrapper:
-        "v3.1.0/bio/fastqc"
+        "0.72.0/bio/fastqc"
 
 
 rule multiqc:

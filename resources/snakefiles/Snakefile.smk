@@ -27,10 +27,16 @@ include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/prototype_selection.smk"
 include: "resources/snakefiles/profile.smk"
 
+kraken_targets = (
+    expand("output/profile/kraken2/{sample}.report.txt", sample=samples)
+    if 'kraken2' in config.get('profilers', []) else []
+)
+
 rule all:
     input:
         "output/qc/multiqc/multiqc.html",
         "output/assemble/multiqc_assemble/multiqc.html",
         "output/prototype_selection/sourmash_plot",
         "output/prototype_selection/prototype_selection/selected_prototypes.yaml",
-        "output/profile/metaphlan/merged_abundance_table.txt"
+        "output/profile/metaphlan/merged_abundance_table.txt",
+        *kraken_targets
