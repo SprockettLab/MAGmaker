@@ -271,7 +271,7 @@ To run a test, set `host_filter.genome` in `config.yaml` to the test genome FAST
     -t <threads> -k 35 -l 150
   ```
   The `-l` flag should match your read length (150 bp is typical). Run once per read length. This is a prerequisite for `taxonomy_kraken` to succeed.
-- **TODO — Download GTDB-tk reference data for demon:** `params.gtdbtk.db_path` is set in `config.yaml` but the data has not yet been downloaded. Note: `gtdbtk download_db` is not a valid subcommand — manual download is required. Browse `https://data.gtdb.ecogenomics.org/releases/` for the latest release, download the `gtdbtk_data_r*.tar.gz` with `wget -c`, extract into `/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk/`, then update `params.gtdbtk.db_path` to the extracted directory.
+- **GTDB-tk reference data (demon):** Downloaded and configured. Path: `/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk/release232`. Note: `gtdbtk download_db` is not a valid subcommand — for other systems, download manually from `data.gtdb.ecogenomics.org/releases/` and extract.
 
 ---
 

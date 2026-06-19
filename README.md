@@ -150,7 +150,7 @@ See the [GTDB-tk documentation](https://ecogenomics.github.io/GTDBTk/installing/
 > **Sprockett Lab (demon cluster):** All three databases are pre-downloaded and configured in `config.yaml` by default:
 > - CheckM2: `.../dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd`
 > - GUNC: `.../dbs/gunc/gunc_db_progenomes2.1.dmnd`
-> - GTDB-tk: `.../dbs/gtdbtk/`
+> - GTDB-tk: `.../dbs/gtdbtk/release232/`
 
 ---
 

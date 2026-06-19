@@ -71,7 +71,7 @@ params:
   das_tool:
     search_engine: 'diamond'
   gtdbtk:
-    db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk"  # set to "" and see README for download instructions on other systems
+    db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk/release232"  # set to "" and see README for download instructions on other systems
   checkm2:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd"  # set to "" to auto-download; see README for instructions on other systems
   gunc:
