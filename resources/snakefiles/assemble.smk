@@ -72,6 +72,7 @@ rule megahit:
         megahit -t {threads} \
           -o {params.temp_dir}/ \
           --memory $(({resources.mem_mb}*1024*1024)) \
+          --keep-tmp-files \
           -1 {input.fastq1} \
           -2 {input.fastq2} \
           2> {log} 1>&2
