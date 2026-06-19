@@ -111,19 +111,7 @@ Common genomes:
 - Human: [GRCh38](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001405.40/)
 - Mouse: [GRCm39](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001635.27/)
 
----
-
-## Sprockett Lab (demon cluster)
-
-All databases are pre-downloaded and configured in `config.yaml` by default:
-
-| Database | Path |
-|---|---|
-| CheckM2 | `/isilon/.../dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd` |
-| GUNC | `/isilon/.../dbs/gunc/gunc_db_progenomes2.1.dmnd` |
-| GTDB-tk | `/isilon/.../dbs/gtdbtk/release232/` |
-| MetaPhlAn 4 | `/isilon/.../dbs/metaphlan/` |
-| Human GRCh38 bowtie2 index | `/isilon/.../dbs/bt2/human_GCA_000001405.29_GRCh38.p14/` |
+> **WFUSM users:** All databases are pre-downloaded on DEMON. See [Running on DEMON](demon.md) for paths and configuration.
 
 ---
 

@@ -43,11 +43,13 @@ conda activate snakemake
 # Edit resources/config/config.yaml, samples.txt, and units.txt
 
 # Run everything (all three stages) — passes all args through to snakemake
-./run_magmaker.sh --profile resources/profiles/demon
-
-# Or run interactively
 ./run_magmaker.sh --cores 8 --use-conda
+
+# On an HPC cluster with a Snakemake SLURM profile
+./run_magmaker.sh --profile resources/profiles/your_cluster
 ```
+
+> **WFUSM users on DEMON:** See [Running on DEMON](docs/demon.md) for a self-contained setup guide with all databases and environments pre-configured.
 
 See the documentation below for details on each step.
 
@@ -60,8 +62,9 @@ See the documentation below for details on each step.
 | [Installation](docs/installation.md) | Requirements, conda setup, test data |
 | [Configuration](docs/configuration.md) | `config.yaml`, `samples.txt`, `units.txt`, `binning.txt` |
 | [Database setup](docs/databases.md) | CheckM2, GUNC, GTDB-tk, MetaPhlAn, host genome |
-| [Running the pipeline](docs/running.md) | Local, SLURM (demon), `run_magmaker.sh` wrapper, stage-by-stage |
+| [Running the pipeline](docs/running.md) | Local, HPC/SLURM, `run_magmaker.sh` wrapper, stage-by-stage |
 | [Output](docs/output.md) | Directory layout, MAG summary table, renaming workflow |
+| [Running on DEMON (WFUSM)](docs/demon.md) | DEMON cluster setup, pre-configured databases and environments |
 
 ---
 

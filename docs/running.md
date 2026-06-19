@@ -19,14 +19,14 @@ MAGmaker runs in up to three stages. The `run_magmaker.sh` wrapper chains all th
 The `run_magmaker.sh` wrapper at the repository root chains all three stages automatically. All arguments are passed through to every `snakemake` invocation, so `--profile`, `--cores`, `--use-conda`, `-n`, and any other Snakemake flags work as expected.
 
 ```bash
-# Demon cluster (SLURM)
-./run_magmaker.sh --profile resources/profiles/demon
+# On an HPC cluster with a Snakemake profile
+./run_magmaker.sh --profile resources/profiles/your_cluster
 
 # Local / interactive
 ./run_magmaker.sh --cores 8 --use-conda
 
 # Dry run (checks all three DAGs without executing)
-./run_magmaker.sh --profile resources/profiles/demon -n
+./run_magmaker.sh --cores 8 --use-conda -n
 ```
 
 **How it works:**
@@ -85,40 +85,57 @@ snakemake --snakefile Snakefile-bin --cores 8 --use-conda rename_mags \
 
 ---
 
-## SLURM (demon cluster)
+## Running on an HPC cluster (SLURM)
 
-A Snakemake profile for demon is at `resources/profiles/demon/`. It:
-- Submits to the `defq` partition
-- Uses 8 GB RAM and 120-minute walltime as per-job defaults
-- Passes `--use-conda` automatically
-- Sets the shared conda prefix (`/isilon/.../snakemake_envs/`)
+Snakemake submits each rule as a separate SLURM job via a [profile](https://snakemake.readthedocs.io/en/stable/executing/cli.html#profiles). A profile is a directory containing a `config.yaml` that sets the executor, default resources, and any per-rule overrides.
 
-```bash
-conda activate /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs/<hash>
+An example profile for a generic SLURM cluster:
 
-# Full pipeline
-./run_magmaker.sh --profile resources/profiles/demon
+```yaml
+# resources/profiles/my_cluster/config.yaml
+executor: slurm
 
-# Or individual stages
-snakemake --profile resources/profiles/demon
-snakemake --profile resources/profiles/demon generate_binning_config
-snakemake --snakefile Snakefile-bin --profile resources/profiles/demon rename_mags \
-  --config binning=output/config/auto_binning.txt
+default-resources:
+  slurm_partition: normal
+  mem_mb: 8000
+  runtime: 120        # minutes
+
+jobs: 100
+use-conda: true
+conda-prefix: /shared/path/to/conda_envs/
+
+set-resources:
+  megahit:
+    mem_mb: 256000
+    runtime: 1440
+  metaphlan:
+    mem_mb: 32000
+    runtime: 240
+  taxonomy_kraken:
+    mem_mb: 220000
+    runtime: 240
+
+latency-wait: 60
+rerun-incomplete: true
+keep-going: true
 ```
 
-To override resources for a specific rule:
+Then run with:
 
 ```bash
-snakemake --profile resources/profiles/demon \
-  --set-resources megahit:mem_mb=256000 megahit:runtime=2880
+./run_magmaker.sh --profile resources/profiles/my_cluster
+```
+
+To override resources for a specific rule at runtime:
+
+```bash
+snakemake --profile resources/profiles/my_cluster \
+  --set-resources megahit:mem_mb=512000 megahit:runtime=2880
 ```
 
 SLURM job logs go to `.snakemake/slurm_logs/{rule}/`. Rule-level logs (tool stderr/stdout) go to `output/logs/{rule}/`.
 
-**demon `defq` partition limits:**
-- Max 15 nodes per job
-- Max walltime: 90 days
-- Default memory: 4 GB/CPU (overridden explicitly by the profile)
+> **WFUSM users:** See [Running on DEMON](demon.md) for a ready-to-use setup with all databases and environments pre-configured.
 
 ---
 
