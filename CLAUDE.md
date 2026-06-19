@@ -70,6 +70,7 @@ nonhost reads (sourmash)
   └─ sourmash_dm
   └─ sourmash_plot         → output/prototype_selection/sourmash_plot/
   └─ prototype_selection   → output/prototype_selection/prototype_selection/selected_prototypes.yaml
+  └─ generate_binning_config → output/config/auto_binning.txt   (explicit target; not in rule all)
 
 nonhost reads (profiling)
   └─ metaphlan             (MetaPhlAn4 preferred)
@@ -77,6 +78,13 @@ nonhost reads (profiling)
 ```
 
 **Default `rule all` targets:** multiqc HTML, assembly multiqc HTML, sourmash plot, selected_prototypes.yaml, merged MetaPhlAn table.
+
+**`generate_binning_config`:** Reads `selected_prototypes.yaml`, selects the `n` prototypes specified by `params.prototypes.n`, and writes `output/config/auto_binning.txt`. Prototype samples provide contigs; all samples contribute reads. Run explicitly after the main pipeline:
+```bash
+snakemake generate_binning_config
+snakemake --snakefile Snakefile-bin --config binning=output/config/auto_binning.txt
+```
+Raises a clear error if `params.prototypes.n` is not present in the YAML (e.g., if it exceeds the number of samples minus one).
 
 ### Binning pipeline (`Snakefile-bin`)
 
@@ -302,6 +310,7 @@ git remote rename sprockettlab origin
 
 ## Planned improvements
 
+- **Option B wrapper script:** Shell script that chains `snakemake` (main pipeline) → `snakemake generate_binning_config` → `snakemake --snakefile Snakefile-bin --config binning=output/config/auto_binning.txt` in one command
 - Standardize Snakemake wrapper versions across all rule files (qc.smk mixes 0.72.0/bio/fastqc, 0.17.4/bio/cutadapt/pe, and v3.1.0/bio/multiqc)
 - Evaluate whether `sourmash.smk` should be deleted (it is a standalone orphan not included by either Snakefile; `prototype_selection.smk` is the active version)
 - Add co-assembly mode: pool reads across samples → single MEGAHIT run → map all samples back

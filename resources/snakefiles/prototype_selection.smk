@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import gzip
 from skbio import DistanceMatrix
-from yaml import dump
+from yaml import dump, safe_load
 
 def _validate_parameters(dm, num_prototypes, seedset=None):
     '''Validate the paramters for each algorithm.
@@ -285,3 +285,57 @@ rule prototype_selection:
                           "Selecting 2 to "
                           "{1} prototypes.\n".format(df.shape[1],
                                                      len(labels) - 1))
+
+
+rule generate_binning_config:
+    """
+    Auto-generates binning.txt for the binning pipeline from prototype selection output.
+    Prototype samples (selected by params.prototypes.n) provide contigs.
+    All samples provide reads mapped back to prototype assemblies.
+    Output goes to output/config/auto_binning.txt — pass to Snakefile-bin via:
+      snakemake --snakefile Snakefile-bin --config binning=output/config/auto_binning.txt
+    """
+    input:
+        prototypes=rules.prototype_selection.output.file
+    output:
+        "output/config/auto_binning.txt"
+    params:
+        n=config['params']['prototypes']['n'],
+        assemblers=config['assemblers']
+    log:
+        "output/logs/generate_binning_config/generate_binning_config.log"
+    run:
+        n = params.n
+        with open(input.prototypes) as fh:
+            proto_dict = safe_load(fh)
+
+        if n not in proto_dict:
+            available = sorted(proto_dict.keys())
+            raise ValueError(
+                f"params.prototypes.n={n} is not available in selected_prototypes.yaml. "
+                f"Available values: {available}. "
+                f"Adjust params.prototypes.n in config.yaml."
+            )
+
+        proto_sigs = proto_dict[n]
+        prototypes = set(os.path.splitext(s)[0] for s in proto_sigs)
+        assembler = params.assemblers[0]
+
+        rows = []
+        for sample in samples:
+            is_proto = sample in prototypes
+            rows.append({
+                'Sample': sample,
+                'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta" if is_proto else "",
+                'Read_Groups': 'Group1',
+                'Contig_Groups': 'Group1' if is_proto else ''
+            })
+
+        os.makedirs(os.path.dirname(output[0]), exist_ok=True)
+        df = pd.DataFrame(rows).set_index('Sample')
+        df.to_csv(output[0], sep='\t')
+
+        with open(log[0], 'w') as logfile:
+            logfile.write(f"n_prototypes: {n}\n")
+            logfile.write(f"prototypes: {sorted(prototypes)}\n")
+            logfile.write(f"all_samples: {list(samples)}\n")
