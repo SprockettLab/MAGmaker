@@ -62,6 +62,7 @@ rule fastqc_pre_trim:
         fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
         STEM=$(basename {input} .fastq.gz)
         mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
+        mv $OUTDIR/${{STEM}}_fastqc.zip {output.zip}
         """
 
 
@@ -138,6 +139,7 @@ rule fastqc_post_trim:
         fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
         STEM=$(basename {input} .fastq.gz)
         mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
+        mv $OUTDIR/${{STEM}}_fastqc.zip {output.zip}
         """
 
 
@@ -243,6 +245,7 @@ rule fastqc_post_host:
         fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
         STEM=$(basename {input} .fastq.gz)
         mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
+        mv $OUTDIR/${{STEM}}_fastqc.zip {output.zip}
         """
 
 
