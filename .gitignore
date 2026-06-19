@@ -1,5 +1,12 @@
-# bowtie2 indexs
+# bowtie2 indexes
 resources/db/bt2/*
+
+# Project-specific run configs (samples/units/binning files for real datasets)
+# Convention: name these <Project>_samples.txt etc. to keep them out of the repo.
+# The defaults (samples.txt, units.txt, binning.txt) point to test data and stay in.
+resources/config/*_samples.txt
+resources/config/*_units.txt
+resources/config/*_binning.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
