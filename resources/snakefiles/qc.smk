@@ -13,6 +13,18 @@ def trimmer_output(wildcards):
     )
 
 
+def merged_reads(sample, read):
+    """Trimmed reads path for host_filter: skip merge_units for single-unit samples."""
+    units = list(units_table.loc[sample].index)
+    if len(units) == 1:
+        return "output/qc/{t}/{s}.{u}.{r}.fastq.gz".format(
+            t=trimmer, s=sample, u=units[0], r=read
+        )
+    return "output/qc/merge_units/{s}.combined.{r}.fastq.gz".format(
+        s=sample, r=read
+    )
+
+
 def trimmer_qc_logs(units_table):
     """Trimmer-specific QC files collected by MultiQC."""
     if trimmer == 'fastp':
@@ -162,8 +174,8 @@ rule host_bowtie2_build:
 
 rule host_filter:
     input:
-        fastq1="output/qc/merge_units/{sample}.combined.R1.fastq.gz",
-        fastq2="output/qc/merge_units/{sample}.combined.R2.fastq.gz",
+        fastq1=lambda wildcards: merged_reads(wildcards.sample, 'R1'),
+        fastq2=lambda wildcards: merged_reads(wildcards.sample, 'R2'),
         db=rules.host_bowtie2_build.output
     output:
         nonhost_R1="output/qc/host_filter/nonhost/{sample}.R1.fastq.gz",
