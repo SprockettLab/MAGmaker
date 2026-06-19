@@ -306,10 +306,20 @@ rule generate_binning_config:
         "output/logs/generate_binning_config/generate_binning_config.log"
     run:
         n = params.n
+        all_samples = list(samples)
+
         with open(input.prototypes) as fh:
             proto_dict = safe_load(fh)
 
-        if n not in proto_dict:
+        if n >= len(all_samples):
+            # Fewer samples than requested prototypes — use all samples
+            prototypes = set(all_samples)
+            actual_n = len(all_samples)
+        elif n in proto_dict:
+            proto_sigs = proto_dict[n]
+            prototypes = set(os.path.splitext(s)[0] for s in proto_sigs)
+            actual_n = n
+        else:
             available = sorted(proto_dict.keys())
             raise ValueError(
                 f"params.prototypes.n={n} is not available in selected_prototypes.yaml. "
@@ -317,12 +327,9 @@ rule generate_binning_config:
                 f"Adjust params.prototypes.n in config.yaml."
             )
 
-        proto_sigs = proto_dict[n]
-        prototypes = set(os.path.splitext(s)[0] for s in proto_sigs)
         assembler = params.assemblers[0]
-
         rows = []
-        for sample in samples:
+        for sample in all_samples:
             is_proto = sample in prototypes
             rows.append({
                 'Sample': sample,
@@ -336,6 +343,7 @@ rule generate_binning_config:
         df.to_csv(output[0], sep='\t')
 
         with open(log[0], 'w') as logfile:
-            logfile.write(f"n_prototypes: {n}\n")
+            logfile.write(f"requested_n: {n}\n")
+            logfile.write(f"actual_n: {actual_n}\n")
             logfile.write(f"prototypes: {sorted(prototypes)}\n")
-            logfile.write(f"all_samples: {list(samples)}\n")
+            logfile.write(f"all_samples: {all_samples}\n")
