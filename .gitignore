@@ -140,6 +140,9 @@ dmypy.json
 
 
 
+#### Claude Code
+CLAUDE.md
+
 #### Snakemake
 
 .snakemake/
