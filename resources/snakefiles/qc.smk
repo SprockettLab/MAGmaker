@@ -69,9 +69,13 @@ rule merge_units:
         "output/benchmarks/qc/merge_units/{sample}.combined.{read}_benchmark.txt"
     log:
         "output/logs/qc/merge_units/{sample}.combined.{read}.log"
-    params: ""
     threads: 1
-    shell: "cat {input} > {output}"
+    run:
+        import os
+        if len(input) == 1:
+            os.symlink(os.path.abspath(input[0]), output[0])
+        else:
+            shell("cat {input} > {output[0]} 2> {log}")
 
 rule host_bowtie2_build:
     input:
