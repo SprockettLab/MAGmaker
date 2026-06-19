@@ -26,10 +26,8 @@ rule metaspades:
         )
     shell:
         """
-        # Make temporary output directory
+        rm -rf {params.temp_dir}
         mkdir -p {params.temp_dir}
-
-        # run the metaspades assembly
         metaspades.py --threads {threads} \
           -o {params.temp_dir}/ \
           --memory $(({resources.mem_mb}/1024)) \
@@ -70,6 +68,7 @@ rule megahit:
         )
     shell:
         """
+        rm -rf {params.temp_dir}
         megahit -t {threads} \
           -o {params.temp_dir}/ \
           --memory $(({resources.mem_mb}*1024*1024)) \
@@ -77,10 +76,8 @@ rule megahit:
           -2 {input.fastq2} \
           2> {log} 1>&2
 
-        # move and rename the contigs file into a permanent directory
         mv {params.temp_dir}/final.contigs.fa {output.contigs}
         rm -rf {params.temp_dir}
-
         """
 
 rule quast:
