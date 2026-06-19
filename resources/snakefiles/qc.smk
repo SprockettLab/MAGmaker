@@ -47,13 +47,22 @@ rule fastqc_pre_trim:
     output:
         html="output/qc/fastqc_pre_trim/{sample}.{unit}.{read}.html",
         zip="output/qc/fastqc_pre_trim/{sample}.{unit}.{read}_fastqc.zip"
-    params: ""
     benchmark:
         "output/benchmarks/qc/fastqc_pre_trim/{sample}.{unit}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
-    wrapper:
-        "v3.1.0/bio/fastqc"
+    conda:
+        "../env/fastqc.yaml"
+    log:
+        "output/logs/qc/fastqc_pre_trim/{sample}.{unit}.{read}.log"
+    shell:
+        """
+        OUTDIR=$(dirname {output.html})
+        mkdir -p $OUTDIR
+        fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
+        STEM=$(basename {input} .fastq.gz)
+        mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
+        """
 
 
 rule fastp_pe:
@@ -114,13 +123,22 @@ rule fastqc_post_trim:
     output:
         html="output/qc/fastqc_post_trim/{sample}.{unit}.{read}.html",
         zip="output/qc/fastqc_post_trim/{sample}.{unit}.{read}_fastqc.zip"
-    params: ""
     benchmark:
         "output/benchmarks/qc/fastqc_post_trim/{sample}.{unit}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
-    wrapper:
-        "v3.1.0/bio/fastqc"
+    conda:
+        "../env/fastqc.yaml"
+    log:
+        "output/logs/qc/fastqc_post_trim/{sample}.{unit}.{read}.log"
+    shell:
+        """
+        OUTDIR=$(dirname {output.html})
+        mkdir -p $OUTDIR
+        fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
+        STEM=$(basename {input} .fastq.gz)
+        mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
+        """
 
 
 rule merge_units:
@@ -210,13 +228,22 @@ rule fastqc_post_host:
     output:
         html="output/qc/fastqc_post_host/{sample}.{read}.html",
         zip="output/qc/fastqc_post_host/{sample}.{read}_fastqc.zip"
-    params: ""
     benchmark:
         "output/benchmarks/qc/fastqc_post_host/{sample}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
-    wrapper:
-        "v3.1.0/bio/fastqc"
+    conda:
+        "../env/fastqc.yaml"
+    log:
+        "output/logs/qc/fastqc_post_host/{sample}.{read}.log"
+    shell:
+        """
+        OUTDIR=$(dirname {output.html})
+        mkdir -p $OUTDIR
+        fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
+        STEM=$(basename {input} .fastq.gz)
+        mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
+        """
 
 
 rule multiqc:
