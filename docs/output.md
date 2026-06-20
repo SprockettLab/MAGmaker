@@ -46,43 +46,48 @@ output/
 
 ## MAG summary table
 
-After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one row per MAG with the following columns:
+After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one row per MAG. MAGs are sorted by GTDB-tk taxonomy (domain → species) before numbering, so sequential IDs (`MAG_0001`, `MAG_0002`, …) group related organisms together regardless of which sample they came from. Empty taxonomy fields are written as `NA`.
 
 | Column | Description |
 |---|---|
-| `mag_id` | Global sequential ID (`MAG_0001` … `MAG_N`), sorted by sample then bin name |
-| `new_name` | Proposed FASTA filename — **edit this column to rename MAGs** |
-| `original_name` | DAS_Tool bin name |
-| `original_path` | Path to source FASTA |
-| `sample_id` | Sample the MAG was assembled from |
-| `winning_binner` | Which binner DAS_Tool selected (metabat2 / maxbin2 / concoct) |
-| `domain` … `species` | GTDB-tk taxonomy in separate columns |
-| `gtdbtk_classification` | Full GTDB-tk classification string |
-| `completeness` | CheckM2 completeness (%) |
-| `contamination` | CheckM2 contamination (%) |
-| `quality_score` | CheckM2 quality score |
-| `gunc_clade_separation_score` | GUNC chimera score |
-| `gunc_pass` | Whether the bin passes GUNC QC |
-| `total_length_bp` | Total assembly size |
-| `num_contigs` | Number of contigs in the bin |
-| `gc_percent` | GC content |
-| `N50` | Assembly N50 |
+| `MAG_ID` | Global sequential ID (`MAG_0001` … `MAG_N`), sorted by taxonomy |
+| `New_Name` | Proposed FASTA filename — **edit this column to rename MAGs** |
+| `Original_Name` | DAS_Tool bin name |
+| `Original_Path` | Path to source FASTA |
+| `Sample_ID` | Sample the MAG was assembled from |
+| `Assembler` | Assembler that produced the contigs (megahit / metaspades) |
+| `Winning_Binner` | Which binner DAS_Tool selected (metabat2 / maxbin2 / concoct) |
+| `Domain` … `Species` | GTDB-tk taxonomy in separate columns; `NA` if unclassified |
+| `GTDB_Classification` | Full GTDB-tk classification string |
+| `Completeness` | CheckM2 completeness (%) |
+| `Contamination` | CheckM2 contamination (%) |
+| `Quality_Score` | Completeness − 5 × Contamination |
+| `MIMAG_Quality` | MIMAG quality tier: `HQ` (≥90% complete, <5% contamination), `MQ` (≥50%, <10%), `LQ` (all else) |
+| `GUNC_Clade_Separation_Score` | GUNC chimera score |
+| `GUNC_Pass` | Whether the bin passes GUNC QC |
+| `Total_Length_BP` | Total genome size (bp) |
+| `Num_Contigs` | Number of contigs in the bin |
+| `Largest_Contig` | Length of the longest contig (bp) |
+| `GC_Percent` | GC content (%) |
+| `N50` | Assembly N50 (bp) |
+| `Coding_Density` | Fraction of genome that is coding sequence (from CheckM2) |
+| `Total_Coding_Sequences` | Number of predicted coding sequences (from CheckM2) |
 
 ---
 
 ## MAG renaming workflow
 
-The default `new_name` values follow the pattern `MAG_0001__Genus_species` using GTDB-tk taxonomy. To use custom names:
+The default `New_Name` values follow the pattern `MAG_0001__Genus_species` using the most resolved available GTDB-tk taxonomy rank. To use custom names:
 
 1. Open `output/mag_qc/mag_summary.tsv` in a spreadsheet editor or text editor
-2. Edit the `new_name` column as desired
+2. Edit the `New_Name` column as desired
 3. Save the file
 4. Re-run the rename step — Snakemake detects the table is newer than the output and re-runs automatically:
 
 ```bash
 # Local
-snakemake --cores 4 --use-conda rename_mags \
-  --snakefile Snakefile-bin --config binning=output/config/auto_binning.txt
+snakemake --snakefile Snakefile-bin --cores 4 --use-conda rename_mags \
+  --config binning=output/config/auto_binning.txt
 
 # demon
 snakemake --snakefile Snakefile-bin --profile resources/profiles/demon rename_mags \

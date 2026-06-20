@@ -67,14 +67,18 @@ Each pipeline module has its own environment YAML in `resources/env/`:
 |---|---|
 | `snakemake.yaml` | top-level (install this first) |
 | `fastp.yaml` | `qc.smk` — default trimmer |
-| `qc.yaml` | `qc.smk` — FastQC, bowtie2, samtools |
+| `cutadapt.yaml` | `qc.smk` — non-default trimmer |
+| `fastqc.yaml` | `qc.smk` — FastQC (all three FastQC rules) |
+| `qc.yaml` | `qc.smk` — host filter (bowtie2, samtools) |
 | `assemble.yaml` | `assemble.smk` — MEGAHIT, metaSPAdes, QUAST |
 | `mapping.yaml` | `mapping.smk` — bowtie2, minimap2, samtools |
 | `binning.yaml` | `binning.smk` — MetaBAT2, MaxBin2, FragGeneScan |
-| `concoct_linux.yaml` | `binning.smk` — CONCOCT (Linux only) |
+| `concoct_linux.yaml` | `binning.smk` — CONCOCT (Linux); change to `concoct_osx.yaml` on macOS |
 | `selected_bins.yaml` | `selected_bins.smk` — DAS_Tool |
-| `mag_qc.yaml` | `mag_qc.smk` — CheckM2, GUNC |
-| `gtdbtk.yaml` | `mag_qc.smk` — GTDB-tk (separate env due to dependency conflicts) |
+| `checkm2.yaml` | `mag_qc.smk` — CheckM2 (separate env; Python version gap) |
+| `gunc.yaml` | `mag_qc.smk` — GUNC (separate env; conflicts with CheckM2) |
+| `gtdbtk.yaml` | `mag_qc.smk` — GTDB-tk (separate env; dependency conflicts) |
+| `mag_qc.yaml` | `mag_qc.smk` — summary script (pandas, numpy) |
 | `profile.yaml` | `profile.smk` — MetaPhlAn 4, Kraken2, Bracken |
 | `prototype_selection.yaml` | `prototype_selection.smk` — sourmash, scikit-bio |
 
