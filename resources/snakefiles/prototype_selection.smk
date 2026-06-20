@@ -245,11 +245,15 @@ rule prototype_selection:
         df = pd.read_csv(input[0], header=0, encoding= 'unicode_escape')
         df.index = df.columns
 
-        # test file sizes
+        # Read sig file paths from the labels file (same order as CSV columns)
+        with open(input.labels) as lf:
+            sig_paths = [line.strip() for line in lf if line.strip()]
+        col_to_sigpath = dict(zip(df.columns, sig_paths))
 
+        # Filter by approximate read depth (line count of gzip-compressed sig as proxy)
         pf_seqs = []
-        for fp in df.columns:
-            # print(depth)
+        for col in df.columns:
+            fp = col_to_sigpath.get(col, col)
             print(fp)
             with gzip.open(fp, 'rb') as f:
                 for i, l in enumerate(f):
@@ -257,11 +261,12 @@ rule prototype_selection:
             seqs = (i + 1) / 4
             print(seqs)
             if params['min_seqs'] <= seqs <= params['max_seqs']:
-                pf_seqs.append(fp)
+                pf_seqs.append(col)
 
         df_filt = df.loc[pf_seqs, pf_seqs]
 
-        labels = [os.path.basename(x) for x in pf_seqs]
+        # Derive sample IDs from sig file basenames (strip .sig extension)
+        labels = [os.path.splitext(os.path.basename(col_to_sigpath[c]))[0] for c in pf_seqs]
 
         dm = DistanceMatrix(1 - df_filt.values)
 
