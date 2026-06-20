@@ -94,13 +94,13 @@ rule run_gtdbtk:
         "output/benchmarks/mag_qc/gtdbtk/{mapper}/{contig_sample}.txt"
     shell:
         """
+        export GTDBTK_DATA_PATH="{params.db_path}"
         gtdbtk classify_wf \
             --genome_dir {params.bins_dir} \
             --out_dir {params.out_dir} \
             --cpus {threads} \
             --extension fa \
             --skip_ani_screen \
-            --data_dir {params.db_path} \
             2> {log} 1>&2
         """
 
