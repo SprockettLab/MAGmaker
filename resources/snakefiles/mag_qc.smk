@@ -17,7 +17,7 @@ rule run_checkm2:
     resources:
         mem_mb=config['mem_mb']['checkm2']
     conda:
-        "../env/mag_qc.yaml"
+        "../env/checkm2.yaml"
     log:
         "output/logs/mag_qc/checkm2/{mapper}/{contig_sample}.log"
     benchmark:
@@ -56,7 +56,7 @@ rule run_gunc:
     threads:
         config['threads']['gunc']
     conda:
-        "../env/mag_qc.yaml"
+        "../env/gunc.yaml"
     log:
         "output/logs/mag_qc/gunc/{mapper}/{contig_sample}.log"
     benchmark:
