@@ -111,7 +111,6 @@ rule run_gtdbtk:
                 --out_dir {params.out_dir} \
                 --cpus {threads} \
                 --extension fa \
-                --skip_ani_screen \
                 2> {log} 1>&2
         fi
         """
