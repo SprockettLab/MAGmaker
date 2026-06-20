@@ -151,7 +151,8 @@ rule make_mag_summary:
         checkm2_base="output/mag_qc/checkm2",
         gunc_base="output/mag_qc/gunc",
         mappers=config['mappers'],
-        contig_samples=list(contig_pairings.keys())
+        contig_samples=list(contig_pairings.keys()),
+        assemblers=config['assemblers']
     conda:
         "../env/mag_qc.yaml"
     log:

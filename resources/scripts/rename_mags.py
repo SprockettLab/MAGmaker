@@ -16,7 +16,7 @@ renamed_dir = snakemake.params.renamed_dir
 
 df = pd.read_csv(summary_path, sep='\t')
 
-required = {'new_name', 'original_path'}
+required = {'New_Name', 'Original_Path'}
 missing = required - set(df.columns)
 if missing:
     raise ValueError(f"mag_summary.tsv is missing required columns: {missing}")
@@ -27,8 +27,8 @@ if os.path.isdir(renamed_dir):
 os.makedirs(renamed_dir)
 
 for _, row in df.iterrows():
-    src = str(row['original_path'])
-    new_name = str(row['new_name'])
+    src = str(row['Original_Path'])
+    new_name = str(row['New_Name'])
     dst = os.path.join(renamed_dir, f"{new_name}.fa")
     if not os.path.exists(src):
         print(f"Warning: source FASTA not found, skipping: {src}")

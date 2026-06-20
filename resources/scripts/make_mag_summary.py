@@ -13,6 +13,7 @@ bins_base = snakemake.params.bins_base
 gtdbtk_base = snakemake.params.gtdbtk_base
 checkm2_base = snakemake.params.checkm2_base
 gunc_base = snakemake.params.gunc_base
+assemblers = snakemake.params.assemblers
 
 
 def compute_mag_stats(fasta_path):
@@ -41,14 +42,15 @@ def compute_mag_stats(fasta_path):
     total_length = sum(lengths)
     n50 = 0
     cumsum = 0
-    for l in lengths:
-        cumsum += l
+    for length in lengths:
+        cumsum += length
         if cumsum >= total_length / 2:
-            n50 = l
+            n50 = length
             break
     return {
         'total_length_bp': total_length,
         'num_contigs': len(lengths),
+        'largest_contig': lengths[0] if lengths else 0,
         'gc_percent': round(gc_count / total_bases * 100, 2) if total_bases > 0 else 0,
         'N50': n50
     }
@@ -93,15 +95,26 @@ def load_gtdbtk(gtdbtk_dir):
 def load_checkm2(checkm2_dir):
     checkm2_map = {}
     report = os.path.join(checkm2_dir, 'quality_report.tsv')
-    if os.path.exists(report):
-        df = pd.read_csv(report, sep='\t')
-        for _, row in df.iterrows():
-            name = str(row.get('Name', ''))
-            checkm2_map[name] = {
-                'completeness': row.get('Completeness', ''),
-                'contamination': row.get('Contamination', ''),
-                'quality_score': row.get('Completeness_General', row.get('quality_score', ''))
-            }
+    if not os.path.exists(report) or os.path.getsize(report) == 0:
+        return checkm2_map
+    df = pd.read_csv(report, sep='\t')
+    if df.empty:
+        return checkm2_map
+    for _, row in df.iterrows():
+        name = str(row.get('Name', ''))
+        completeness = row.get('Completeness', None)
+        contamination = row.get('Contamination', None)
+        try:
+            quality_score = round(float(completeness) - 5 * float(contamination), 2)
+        except (TypeError, ValueError):
+            quality_score = ''
+        checkm2_map[name] = {
+            'completeness': completeness,
+            'contamination': contamination,
+            'quality_score': quality_score,
+            'coding_density': row.get('Coding_Density', ''),
+            'total_coding_sequences': row.get('Total_Coding_Sequences', ''),
+        }
     return checkm2_map
 
 
@@ -119,15 +132,44 @@ def load_gunc(gunc_dir):
     return gunc_map
 
 
-def load_dastool_summary(summary_path):
-    binner_map = {}
-    if os.path.exists(summary_path):
-        df = pd.read_csv(summary_path, sep='\t')
-        id_col = df.columns[0]
-        for _, row in df.iterrows():
-            bin_id = str(row[id_col])
-            binner_map[bin_id] = str(row.get('tool_used', bin_id.split('.')[0]))
-    return binner_map
+def build_binner_map(bins_base, mapper, sample, binners=('metabat2', 'maxbin2', 'concoct')):
+    """Map each winning bin name to the binner that produced it via scaffolds2bin files."""
+    bin_to_binner = {}
+    for binner in binners:
+        s2b = os.path.join(bins_base, binner, mapper, 'scaffolds2bin',
+                           f'{sample}_scaffolds2bin.tsv')
+        if not os.path.exists(s2b) or os.path.getsize(s2b) == 0:
+            continue
+        try:
+            df = pd.read_csv(s2b, sep='\t', header=None, names=['contig', 'bin'])
+            for bin_name in df['bin'].unique():
+                bin_to_binner[str(bin_name)] = binner
+        except Exception as e:
+            print(f"Warning: could not read {s2b}: {e}")
+    return bin_to_binner
+
+
+def get_assembler(sample, assemblers):
+    """Return whichever configured assembler produced contigs for this sample."""
+    for assembler in assemblers:
+        contigs = os.path.join('output', 'assemble', assembler, f'{sample}.contigs.fasta')
+        if os.path.exists(contigs):
+            return assembler
+    return 'unknown'
+
+
+def mimag_quality(completeness, contamination):
+    try:
+        c = float(completeness)
+        x = float(contamination)
+    except (TypeError, ValueError):
+        return ''
+    if c >= 90 and x < 5:
+        return 'HQ'
+    elif c >= 50 and x < 10:
+        return 'MQ'
+    else:
+        return 'LQ'
 
 
 # Collect all MAGs
@@ -140,30 +182,34 @@ for mapper in mappers:
             print(f"Warning: bins directory not found: {bins_dir}")
             continue
 
-        das_tool_summary = os.path.join(
-            bins_base, mapper, 'run_DAS_Tool', f'{sample}_DASTool_summary.tsv')
-        binner_map = load_dastool_summary(das_tool_summary)
+        bin_to_binner = build_binner_map(bins_base, mapper, sample)
         tax_map = load_gtdbtk(os.path.join(gtdbtk_base, mapper, sample))
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
         gunc_map = load_gunc(os.path.join(gunc_base, mapper, sample))
+        assembler = get_assembler(sample, assemblers)
 
         for fa in sorted(glob.glob(os.path.join(bins_dir, '*.fa'))):
             bin_name = os.path.splitext(os.path.basename(fa))[0]
-            binner = binner_map.get(bin_name, bin_name.split('.')[0])
+            binner = bin_to_binner.get(bin_name, 'unknown')
 
             tax_entry = tax_map.get(bin_name, (parse_gtdbtk_classification(''), ''))
             tax_dict, full_classification = tax_entry
             tax_label = get_taxonomic_label(tax_dict)
 
             stats = compute_mag_stats(fa)
-            qc = checkm2_map.get(bin_name, {'completeness': '', 'contamination': '', 'quality_score': ''})
-            gunc = gunc_map.get(bin_name, {'gunc_clade_separation_score': '', 'gunc_pass': ''})
+            qc = checkm2_map.get(bin_name, {
+                'completeness': '', 'contamination': '', 'quality_score': '',
+                'coding_density': '', 'total_coding_sequences': ''
+            })
+            gunc = gunc_map.get(bin_name, {
+                'gunc_clade_separation_score': '', 'gunc_pass': ''
+            })
 
             all_mags.append({
                 'original_name': bin_name,
                 'original_path': fa,
                 'sample_id': sample,
-                'mapper': mapper,
+                'assembler': assembler,
                 'winning_binner': binner,
                 'tax_dict': tax_dict,
                 'tax_label': tax_label,
@@ -173,38 +219,46 @@ for mapper in mappers:
                 **stats
             })
 
-# Sort for reproducible global numbering
-all_mags.sort(key=lambda x: (x['sample_id'], x['original_name']))
+# Sort by taxonomy so related MAGs receive sequential IDs
+TAX_RANKS = ('domain', 'phylum', 'class', 'order', 'family', 'genus', 'species')
+all_mags.sort(
+    key=lambda x: tuple(x['tax_dict'].get(r, '\xff') or '\xff' for r in TAX_RANKS)
+    + (x['original_name'],)
+)
 
 rows = []
 for i, mag in enumerate(all_mags, 1):
     mag_id = f"MAG_{i:04d}"
     tax = mag['tax_dict']
     rows.append({
-        'mag_id': mag_id,
-        'new_name': f"{mag_id}__{mag['tax_label']}",
-        'original_name': mag['original_name'],
-        'original_path': mag['original_path'],
-        'sample_id': mag['sample_id'],
-        'mapper': mag['mapper'],
-        'winning_binner': mag['winning_binner'],
-        'domain': tax.get('domain', ''),
-        'phylum': tax.get('phylum', ''),
-        'class': tax.get('class', ''),
-        'order': tax.get('order', ''),
-        'family': tax.get('family', ''),
-        'genus': tax.get('genus', ''),
-        'species': tax.get('species', ''),
-        'gtdbtk_classification': mag['gtdbtk_classification'],
-        'completeness': mag.get('completeness', ''),
-        'contamination': mag.get('contamination', ''),
-        'quality_score': mag.get('quality_score', ''),
-        'gunc_clade_separation_score': mag.get('gunc_clade_separation_score', ''),
-        'gunc_pass': mag.get('gunc_pass', ''),
-        'total_length_bp': mag.get('total_length_bp', ''),
-        'num_contigs': mag.get('num_contigs', ''),
-        'gc_percent': mag.get('gc_percent', ''),
-        'N50': mag.get('N50', '')
+        'MAG_ID': mag_id,
+        'New_Name': f"{mag_id}__{mag['tax_label']}",
+        'Original_Name': mag['original_name'],
+        'Original_Path': mag['original_path'],
+        'Sample_ID': mag['sample_id'],
+        'Assembler': mag['assembler'],
+        'Winning_Binner': mag['winning_binner'],
+        'Domain': tax.get('domain', '') or 'NA',
+        'Phylum': tax.get('phylum', '') or 'NA',
+        'Class': tax.get('class', '') or 'NA',
+        'Order': tax.get('order', '') or 'NA',
+        'Family': tax.get('family', '') or 'NA',
+        'Genus': tax.get('genus', '') or 'NA',
+        'Species': tax.get('species', '') or 'NA',
+        'GTDB_Classification': mag['gtdbtk_classification'] or 'NA',
+        'Completeness': mag.get('completeness', ''),
+        'Contamination': mag.get('contamination', ''),
+        'Quality_Score': mag.get('quality_score', ''),
+        'MIMAG_Quality': mimag_quality(mag.get('completeness', ''), mag.get('contamination', '')),
+        'GUNC_Clade_Separation_Score': mag.get('gunc_clade_separation_score', ''),
+        'GUNC_Pass': mag.get('gunc_pass', ''),
+        'Total_Length_BP': mag.get('total_length_bp', ''),
+        'Num_Contigs': mag.get('num_contigs', ''),
+        'Largest_Contig': mag.get('largest_contig', ''),
+        'GC_Percent': mag.get('gc_percent', ''),
+        'N50': mag.get('N50', ''),
+        'Coding_Density': mag.get('coding_density', ''),
+        'Total_Coding_Sequences': mag.get('total_coding_sequences', ''),
     })
 
 pd.DataFrame(rows).to_csv(snakemake.output.summary, sep='\t', index=False)
