@@ -123,9 +123,7 @@ host_filter:
   #
   # Pre-built indexes on demon (/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/):
   #   Human GRCh38.p14:  human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna
-  #   Mouse GRCm39:      (not yet indexed — download GCA_000001635.9 and run host_bowtie2_build)
-  #   Warbler (mywa_2.1):(not yet indexed — download GCA_001746935.2 and run host_bowtie2_build)
   #
-  # For test runs (PhiX):
+  # For test runs (mouse chr1):
   #   db_dir: resources/test/test_dbs
-  #   genome: resources/db/bt2/GCA_000819615.1.fna
+  #   genome: resources/test/test_dbs/GCA_000001635.9.fna
