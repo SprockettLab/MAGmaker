@@ -312,9 +312,24 @@ rule generate_binning_config:
     run:
         n = params.n
         all_samples = list(samples)
+        all_samples_set = set(all_samples)
 
         with open(input.prototypes) as fh:
             proto_dict = safe_load(fh)
+
+        def match_to_sample(name, sample_set):
+            """Strip extensions from a sig name until a sample ID match is found."""
+            name = os.path.basename(name)
+            if name in sample_set:
+                return name
+            while True:
+                stripped = os.path.splitext(name)[0]
+                if stripped == name:
+                    break
+                name = stripped
+                if name in sample_set:
+                    return name
+            return None
 
         if n >= len(all_samples):
             # Fewer samples than requested prototypes — use all samples
@@ -322,8 +337,19 @@ rule generate_binning_config:
             actual_n = len(all_samples)
         elif n in proto_dict:
             proto_sigs = proto_dict[n]
-            prototypes = set(os.path.splitext(s)[0] for s in proto_sigs)
-            actual_n = n
+            prototypes = set()
+            for s in proto_sigs:
+                sample = match_to_sample(s, all_samples_set)
+                if sample:
+                    prototypes.add(sample)
+            if not prototypes:
+                raise ValueError(
+                    f"Could not match any prototype names to sample IDs. "
+                    f"Prototype names from YAML: {proto_sigs}. "
+                    f"Sample IDs: {all_samples}. "
+                    f"Check that prototype_selection output matches your samples."
+                )
+            actual_n = len(prototypes)
         else:
             available = sorted(proto_dict.keys())
             raise ValueError(
