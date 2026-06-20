@@ -134,7 +134,11 @@ rule run_DAS_Tool:
             --write_bins \
             --write_bin_evals \
             --threads {threads} \
-            --search_engine {params.search_engine}
+            --search_engine {params.search_engine} \
+            2> {log} 1>&2 || {{
+                echo "No bins above score threshold; no MAGs for this sample." >> {log}
+                printf "bin_id\n" > {output.out}
+            }}
         """
 
 

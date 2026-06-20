@@ -24,19 +24,23 @@ rule run_checkm2:
         "output/benchmarks/mag_qc/checkm2/{mapper}/{contig_sample}.txt"
     shell:
         """
-        db_flag=""
-        if [ -n "{params.db_path}" ]; then
-            db_flag="--database_path {params.db_path}"
+        if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
+            echo "No bins in {params.bins_dir}; skipping checkm2." >> {log}
+            printf "Name\tCompleteness\tContamination\n" > {output.report}
+        else
+            db_flag=""
+            if [ -n "{params.db_path}" ]; then
+                db_flag="--database_path {params.db_path}"
+            fi
+            checkm2 predict \
+                --input {params.bins_dir} \
+                --output-directory {params.out_dir} \
+                --threads {threads} \
+                --extension fa \
+                --force \
+                $db_flag \
+                2> {log} 1>&2
         fi
-
-        checkm2 predict \
-            --input {params.bins_dir} \
-            --output-directory {params.out_dir} \
-            --threads {threads} \
-            --extension fa \
-            --force \
-            $db_flag \
-            2> {log} 1>&2
         """
 
 
@@ -63,13 +67,17 @@ rule run_gunc:
         "output/benchmarks/mag_qc/gunc/{mapper}/{contig_sample}.txt"
     shell:
         """
-        gunc run \
-            --input_dir {params.bins_dir} \
-            --out_dir {params.out_dir} \
-            --threads {threads} \
-            --file_suffix .fa \
-            {params.db_flag} \
-            2> {log} 1>&2
+        if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
+            echo "No bins in {params.bins_dir}; skipping gunc." >> {log}
+        else
+            gunc run \
+                --input_dir {params.bins_dir} \
+                --out_dir {params.out_dir} \
+                --threads {threads} \
+                --file_suffix .fa \
+                {params.db_flag} \
+                2> {log} 1>&2
+        fi
         """
 
 
@@ -94,14 +102,18 @@ rule run_gtdbtk:
         "output/benchmarks/mag_qc/gtdbtk/{mapper}/{contig_sample}.txt"
     shell:
         """
-        export GTDBTK_DATA_PATH="{params.db_path}"
-        gtdbtk classify_wf \
-            --genome_dir {params.bins_dir} \
-            --out_dir {params.out_dir} \
-            --cpus {threads} \
-            --extension fa \
-            --skip_ani_screen \
-            2> {log} 1>&2
+        if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
+            echo "No bins in {params.bins_dir}; skipping gtdbtk." >> {log}
+        else
+            export GTDBTK_DATA_PATH="{params.db_path}"
+            gtdbtk classify_wf \
+                --genome_dir {params.bins_dir} \
+                --out_dir {params.out_dir} \
+                --cpus {threads} \
+                --extension fa \
+                --skip_ani_screen \
+                2> {log} 1>&2
+        fi
         """
 
 
