@@ -133,7 +133,8 @@ def load_gunc(gunc_dir):
 
 
 def build_binner_map(bins_base, mapper, sample, binners=('metabat2', 'maxbin2', 'concoct')):
-    """Map each winning bin name to the binner that produced it via scaffolds2bin files."""
+    """Map each winning bin name to the binner that produced it via scaffolds2bin files.
+    DAS_Tool _sub bins are refined sub-bins of a parent bin — strip the suffix to find the parent."""
     bin_to_binner = {}
     for binner in binners:
         s2b = os.path.join(bins_base, binner, mapper, 'scaffolds2bin',
@@ -147,6 +148,17 @@ def build_binner_map(bins_base, mapper, sample, binners=('metabat2', 'maxbin2', 
         except Exception as e:
             print(f"Warning: could not read {s2b}: {e}")
     return bin_to_binner
+
+
+def resolve_binner(bin_name, bin_to_binner):
+    """Look up binner for a bin, falling back to the parent name for DAS_Tool _sub bins."""
+    if bin_name in bin_to_binner:
+        return bin_to_binner[bin_name]
+    if bin_name.endswith('_sub'):
+        parent = bin_name[:-4]
+        if parent in bin_to_binner:
+            return bin_to_binner[parent]
+    return 'unknown'
 
 
 def get_assembler(sample, assemblers):
@@ -190,7 +202,7 @@ for mapper in mappers:
 
         for fa in sorted(glob.glob(os.path.join(bins_dir, '*.fa'))):
             bin_name = os.path.splitext(os.path.basename(fa))[0]
-            binner = bin_to_binner.get(bin_name, 'unknown')
+            binner = resolve_binner(bin_name, bin_to_binner)
 
             tax_entry = tax_map.get(bin_name, (parse_gtdbtk_classification(''), ''))
             tax_dict, full_classification = tax_entry
@@ -219,11 +231,15 @@ for mapper in mappers:
                 **stats
             })
 
-# Sort by taxonomy so related MAGs receive sequential IDs
+# Sort by taxonomy then MIMAG quality (HQ first) then original name
 TAX_RANKS = ('domain', 'phylum', 'class', 'order', 'family', 'genus', 'species')
+MIMAG_ORDER = {'HQ': 0, 'MQ': 1, 'LQ': 2, '': 3}
 all_mags.sort(
-    key=lambda x: tuple(x['tax_dict'].get(r, '\xff') or '\xff' for r in TAX_RANKS)
-    + (x['original_name'],)
+    key=lambda x: (
+        tuple(x['tax_dict'].get(r, '\xff') or '\xff' for r in TAX_RANKS),
+        MIMAG_ORDER.get(mimag_quality(x.get('completeness', ''), x.get('contamination', '')), 3),
+        x['original_name'],
+    )
 )
 
 rows = []
