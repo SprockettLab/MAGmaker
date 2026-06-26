@@ -10,6 +10,11 @@ use-conda: true
 conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs
 
 set-resources:
+  host_filter:
+    mem_mb: 16000
+    runtime: 480
+  megahit:
+    runtime: 480
   metaphlan:
     mem_mb: 32000
     runtime: 240
