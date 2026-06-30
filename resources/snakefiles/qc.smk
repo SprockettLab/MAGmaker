@@ -281,5 +281,7 @@ rule multiqc:
         "output/logs/qc/multiqc/multiqc.log"
     benchmark:
         "output/benchmarks/qc/multiqc/multiqc_benchmark.txt"
+    resources:
+        mem_mb=config['mem_mb']['multiqc']
     wrapper:
         "v3.1.0/bio/multiqc"
