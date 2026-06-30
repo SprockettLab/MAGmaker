@@ -114,6 +114,7 @@ mem_mb:
   megahit: 256000
   checkm2: 32000
   gtdbtk: 128000
+  multiqc: 32000
 
 host_filter:
   db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14"

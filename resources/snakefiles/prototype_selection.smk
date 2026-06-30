@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-import gzip
+import json
 from skbio import DistanceMatrix
 from yaml import dump, safe_load
 
@@ -250,16 +250,16 @@ rule prototype_selection:
             sig_paths = [line.strip() for line in lf if line.strip()]
         col_to_sigpath = dict(zip(df.columns, sig_paths))
 
-        # Filter by approximate read depth (line count of gzip-compressed sig as proxy)
+        # Filter by post-trimming read depth from fastp JSON (already computed, tiny files).
+        # The labels file contains nonhost FASTQ paths; reading those directly is
+        # prohibitively slow and memory-intensive for large cohorts.
         pf_seqs = []
         for col in df.columns:
             fp = col_to_sigpath.get(col, col)
-            print(fp)
-            with gzip.open(fp, 'rb') as f:
-                for i, l in enumerate(f):
-                    pass
-            seqs = (i + 1) / 4
-            print(seqs)
+            sample = os.path.basename(fp).split('.')[0]
+            fastp_json = f"output/qc/fastp/{sample}.Run_1.fastp.json"
+            with open(fastp_json) as jf:
+                seqs = json.load(jf)['summary']['after_filtering']['total_reads']
             if params['min_seqs'] <= seqs <= params['max_seqs']:
                 pf_seqs.append(col)
 
@@ -276,10 +276,28 @@ rule prototype_selection:
 
         proto_dict = {}
 
-        for k in range(2, len(labels)):
-            # run prototypeSelection function
-            prototypes = prototype_selection_destructive_maxdist(dm, k)
-            proto_dict[k] = [labels[int(x)] for x in prototypes]
+        # Single-pass elimination: O(n^2) instead of calling the destructive selection
+        # function once per k value, which is O(n^3) and times out for large cohorts.
+        n_labels = len(labels)
+        currDists = dm.data.sum(axis=1).copy()
+        numRemain = n_labels
+        elimination_order = []
+
+        minElmIdx = int(currDists.argmin())
+        currDists[minElmIdx] = np.inf
+        numRemain -= 1
+        elimination_order.append(minElmIdx)
+
+        while numRemain > 2:
+            currDists -= dm.data[elimination_order[-1]]
+            minElmIdx = int(currDists.argmin())
+            currDists[minElmIdx] = np.inf
+            numRemain -= 1
+            elimination_order.append(minElmIdx)
+
+        for k in range(2, n_labels):
+            eliminated = set(elimination_order[:n_labels - k])
+            proto_dict[k] = [labels[i] for i in range(n_labels) if i not in eliminated]
 
         with open(output[0], 'w') as outfile:
             dump(proto_dict, outfile, default_flow_style=False)
