@@ -180,13 +180,14 @@ rule host_bowtie2_build:
     input:
         reference=config['host_filter']['genome']
     output:
-        multiext(host_base,
-                 ".1.bt2",
-                 ".2.bt2",
-                 ".3.bt2",
-                 ".4.bt2",
-                 ".rev.1.bt2",
-                 ".rev.2.bt2")
+        # bowtie2-build writes small-index (.bt2) files for references
+        # under ~4 Gbp and large-index (.bt2l) files above it. Declaring
+        # fixed .bt2 outputs breaks on large hosts (e.g. multi-genome
+        # vervet references), where only .bt2l files appear. Track a
+        # sentinel instead; `bowtie2 -x` auto-detects the index layout at
+        # align time. To reuse a prebuilt index without rebuilding, touch
+        # this file next to the existing index (same stem as host_base).
+        touch(host_base + ".bowtie2_build.done")
     log:
         "output/logs/qc/host_bowtie2_build/host_bowtie2_build.log"
     benchmark:
