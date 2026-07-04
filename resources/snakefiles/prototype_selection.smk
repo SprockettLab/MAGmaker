@@ -257,9 +257,15 @@ rule prototype_selection:
         for col in df.columns:
             fp = col_to_sigpath.get(col, col)
             sample = os.path.basename(fp).split('.')[0]
-            fastp_json = f"output/qc/fastp/{sample}.Run_1.fastp.json"
-            with open(fastp_json) as jf:
-                seqs = json.load(jf)['summary']['after_filtering']['total_reads']
+            # Sum post-trimming read depth across all of this sample's units.
+            # Unit names come from the units table (e.g. 'Run1'); they must not
+            # be hardcoded, since fastp writes one JSON per {sample}.{unit}.
+            seqs = 0
+            for unit in units_table.loc[sample].index:
+                fastp_json = f"output/qc/fastp/{sample}.{unit}.fastp.json"
+                with open(fastp_json) as jf:
+                    summary = json.load(jf)['summary']
+                    seqs += summary['after_filtering']['total_reads']
             if params['min_seqs'] <= seqs <= params['max_seqs']:
                 pf_seqs.append(col)
 
