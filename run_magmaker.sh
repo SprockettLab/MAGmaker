@@ -19,6 +19,8 @@
 #   ./run_magmaker.sh --profile resources/profiles/demon
 #   ./run_magmaker.sh --cores 8 --use-conda
 #   ./run_magmaker.sh --profile resources/profiles/demon -n   # dry run
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --configfile resources/config/<Project>_config.yaml   # project config
 #
 # To stop after the MAG summary table so you can review/edit
 # output/mag_qc/mag_summary.tsv before renaming, run stages manually:
@@ -43,7 +45,10 @@ echo ""
 echo "========================================"
 echo " MAGmaker  Step 2/3 — Binning config"
 echo "========================================"
-snakemake "$@" generate_binning_config
+# Target goes before "$@" so a trailing variable-length option in the
+# user's args (e.g. --configfile FILE, which accepts one or more values)
+# cannot swallow the target name.
+snakemake generate_binning_config "$@"
 
 echo ""
 echo "========================================"
@@ -60,7 +65,9 @@ if [[ ! -f output/config/auto_binning.txt ]]; then
     echo "     --config binning=output/config/auto_binning.txt"
     echo ""
 else
-    snakemake --snakefile Snakefile-bin "$@" rename_mags \
+    # Target before "$@"; keep the variable-length --config last so it
+    # doesn't consume, and isn't consumed by, options in the user's args.
+    snakemake --snakefile Snakefile-bin rename_mags "$@" \
         --config binning=output/config/auto_binning.txt
 
     echo ""
