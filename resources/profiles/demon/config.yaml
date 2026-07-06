@@ -15,6 +15,8 @@ set-resources:
     runtime: 480
   megahit:
     runtime: 480
+  metaspades:
+    runtime: 1440       # metaspades is much slower than megahit
   metaphlan:
     mem_mb: 32000
     runtime: 240
