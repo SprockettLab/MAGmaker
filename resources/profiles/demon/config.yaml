@@ -27,6 +27,9 @@ set-resources:
     runtime: 360        # DIAMOND vs uniref100; usually well under this
   run_gtdbtk:
     runtime: 1440       # classify_wf (pplacer + ANI) can run several hours
+  make_concoct_coverage_table:
+    mem_mb: 64000       # ~7.8 GiB at the 8 GB cap on a 90-BAM reference
+    runtime: 720        # concoct_coverage_table.py over ~90 BAMs > 2 h default
 latency-wait: 60
 rerun-incomplete: true
 keep-going: true
