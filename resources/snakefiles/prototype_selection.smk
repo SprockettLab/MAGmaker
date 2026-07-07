@@ -319,8 +319,9 @@ rule prototype_selection:
 rule generate_binning_config:
     """
     Auto-generates binning.txt for the binning pipeline from prototype selection output.
-    Prototype samples (selected by params.prototypes.n) provide contigs.
-    All samples provide reads mapped back to prototype assemblies.
+    All samples provide contigs (every assembly gets binned).
+    Prototype samples (selected by params.prototypes.n) provide the reads used
+    as the differential-coverage basis for binning every assembly.
     Output goes to output/config/auto_binning.txt — pass to Snakefile-bin via:
       snakemake --snakefile Snakefile-bin --config binning=output/config/auto_binning.txt
     """
@@ -388,9 +389,9 @@ rule generate_binning_config:
             is_proto = sample in prototypes
             rows.append({
                 'Sample': sample,
-                'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta" if is_proto else "",
-                'Read_Groups': 'Group1',
-                'Contig_Groups': 'Group1' if is_proto else ''
+                'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",
+                'Read_Groups': 'Group1' if is_proto else '',
+                'Contig_Groups': 'Group1'
             })
 
         os.makedirs(os.path.dirname(output[0]), exist_ok=True)
