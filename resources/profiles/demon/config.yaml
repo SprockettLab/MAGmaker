@@ -16,6 +16,9 @@ set-resources:
   megahit:
     runtime: 480
   metaspades:
+    mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
+                        # input-scaled floor; this overrides it. defq nodes
+                        # are ~755 GB, so 256 GB still fits 3 jobs per node.
     runtime: 1440       # metaspades is much slower than megahit
   metaphlan:
     mem_mb: 32000
