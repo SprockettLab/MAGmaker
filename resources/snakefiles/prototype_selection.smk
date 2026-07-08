@@ -386,11 +386,11 @@ rule generate_binning_config:
         assembler = params.assemblers[0]
         rows = []
         for sample in all_samples:
-            is_proto = sample in prototypes
+            is_prototype = sample in prototypes
             rows.append({
                 'Sample': sample,
                 'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",
-                'Read_Groups': 'Group1' if is_proto else '',
+                'Read_Groups': 'Group1' if is_prototype else '',
                 'Contig_Groups': 'Group1'
             })
 
