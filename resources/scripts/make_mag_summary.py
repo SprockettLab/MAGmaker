@@ -150,14 +150,29 @@ def build_binner_map(bins_base, mapper, sample, binners=('metabat2', 'maxbin2', 
     return bin_to_binner
 
 
-def resolve_binner(bin_name, bin_to_binner):
-    """Look up binner for a bin, falling back to the parent name for DAS_Tool _sub bins."""
+def resolve_binner(bin_name, bin_to_binner,
+                   binners=('metabat2', 'maxbin2', 'concoct')):
+    """Look up the binner that produced a winning DAS_Tool bin.
+
+    Primary: match the bin name against the scaffolds2bin map, falling back to
+    the parent name for DAS_Tool `_sub` refined sub-bins.
+
+    Fallback: run_DAS_Tool is called with `--labels metabat2,maxbin2,concoct`,
+    so winning bins are prefixed with their source binner (e.g. `concoct_13`,
+    `maxbin2_v2489_Mother_Day7_bin.088`). When the scaffolds2bin lookup does not
+    resolve — e.g. a sample whose scaffolds2bin files are missing or empty, which
+    otherwise sent every bin to 'unknown' — recover the binner from that prefix.
+    """
     if bin_name in bin_to_binner:
         return bin_to_binner[bin_name]
     if bin_name.endswith('_sub'):
         parent = bin_name[:-4]
         if parent in bin_to_binner:
             return bin_to_binner[parent]
+    # Recover from the DAS_Tool label prefix (labels are the binner names).
+    for binner in binners:
+        if bin_name.startswith(binner + '_'):
+            return binner
     return 'unknown'
 
 
