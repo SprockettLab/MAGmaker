@@ -116,6 +116,20 @@ mem_mb:
   gtdbtk: 128000
   multiqc: 32000
 
+retries:
+  # DAS_Tool's single-copy-gene detection intermittently comes up empty under
+  # high per-node concurrency: it reports no SCGs for BOTH the bacteria and
+  # archaea sets and aborts ("No single copy genes predicted"). This is a known,
+  # unresolved fragility in DAS_Tool's own parallel plumbing, not the data --
+  # see cmks/DAS_Tool#110 (empty .scg.candidates.faa despite successful gene
+  # prediction and DIAMOND hits), #57 (threads arg not respected), #78 (fails on
+  # some samples, evaluateBinsDTParallel). gunc's DIAMOND step is similarly
+  # fragile. Here it is nondeterministic -- the same sample succeeds on a re-run
+  # -- so retrying clears it, because a retry fires as the batch drains and lands
+  # in a lower-contention window. Set the retry count per-rule independently.
+  run_DAS_Tool: 4
+  run_gunc: 4
+
 host_filter:
   db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14"
   genome: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna"

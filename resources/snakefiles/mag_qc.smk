@@ -59,6 +59,8 @@ rule run_gunc:
         )
     threads:
         config['threads']['gunc']
+    retries:
+        config['retries']['run_gunc']
     conda:
         "../env/gunc.yaml"
     log:
@@ -70,6 +72,10 @@ rule run_gunc:
         if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
             echo "No bins in {params.bins_dir}; skipping gunc." >> {log}
         else
+            # Clear any half-written output so a retry (gunc calls DIAMOND, which
+            # races under concurrency like run_DAS_Tool) starts from a clean dir.
+            rm -rf {params.out_dir}
+            mkdir -p {params.out_dir}
             gunc run \
                 --input_dir {params.bins_dir} \
                 --out_dir {params.out_dir} \
