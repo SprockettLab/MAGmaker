@@ -35,6 +35,13 @@ set-resources:
   make_concoct_coverage_table:
     mem_mb: 64000       # ~7.8 GiB at the 8 GB cap on a 90-BAM reference
     runtime: 720        # concoct_coverage_table.py over ~90 BAMs > 2 h default
+  run_DAS_Tool:
+    mem_mb: 32000       # DIAMOND SCG search OOMs at the 8 GB default (bacteria
+    runtime: 240        # set fails, archaea survives); matches run_checkm2's
+                        # DIAMOND allocation, the one that works
+  run_gunc:
+    mem_mb: 32000       # DIAMOND vs progenomes2.1 OOMs at the 8 GB default
+    runtime: 240
 latency-wait: 60
 rerun-incomplete: true
 keep-going: true
