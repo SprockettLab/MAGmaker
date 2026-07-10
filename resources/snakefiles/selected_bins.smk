@@ -120,12 +120,25 @@ rule run_DAS_Tool:
         "../env/selected_bins.yaml"
     threads:
         config['threads']['run_DAS_Tool']
+    retries:
+        config['retries']['run_DAS_Tool']
     benchmark:
         "output/benchmarks/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}_benchmark.txt"
     log:
         "output/logs/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}.log"
     shell:
+        # DAS_Tool's single-copy-gene detection intermittently comes up empty
+        # under high per-node concurrency, reporting no SCGs for both the bacteria
+        # and archaea sets and aborting ("No single copy genes predicted"). This
+        # is a known DAS_Tool fragility (cmks/DAS_Tool#110), not the data, and
+        # here it is nondeterministic -- the same sample succeeds on a re-run --
+        # so we let that specific failure propagate (exit non-zero) to trigger
+        # Snakemake `retries`, while a genuinely empty sample (no bin scored above
+        # the threshold) still writes a header and succeeds. Partial outputs from
+        # a failed attempt are cleared first so each retry starts clean.
         """
+            rm -rf {params.basename}_* {params.basename}.* 2> /dev/null || true
+            set +e
             DAS_Tool \
             --bins {input.metabat2},{input.maxbin2},{input.concoct} \
             --contigs {input.contigs} \
@@ -135,10 +148,18 @@ rule run_DAS_Tool:
             --write_bin_evals \
             --threads {threads} \
             --search_engine {params.search_engine} \
-            2> {log} 1>&2 || {{
-                echo "No bins above score threshold; no MAGs for this sample." >> {log}
-                printf "bin_id\n" > {output.out}
-            }}
+            2> {log} 1>&2
+            status=$?
+            set -e
+            if [ $status -eq 0 ]; then
+                exit 0
+            fi
+            if grep -qE "No SCGs detected|No single copy genes predicted" {log}; then
+                echo "Empty predicted-protein set (transient concurrency race); failing for retry." >> {log}
+                exit 1
+            fi
+            echo "No bins above score threshold; no MAGs for this sample." >> {log}
+            printf "bin_id\n" > {output.out}
         """
 
 
