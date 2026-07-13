@@ -129,6 +129,9 @@ retries:
   # in a lower-contention window. Set the retry count per-rule independently.
   run_DAS_Tool: 4
   run_gunc: 4
+  # consolidate_DAS_Tool_bins reads run_DAS_Tool's output; on a busy shared
+  # filesystem that input can lag past latency-wait. A few retries ride it out.
+  consolidate_DAS_Tool_bins: 3
 
 host_filter:
   db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14"
