@@ -152,6 +152,13 @@ rule run_DAS_Tool:
             status=$?
             set -e
             if [ $status -eq 0 ]; then
+                # Drop the large gene-prediction/DIAMOND intermediates (whole-
+                # sample proteins, chunked DasToolParallel tmp files, SCG hit
+                # tables) that DAS_Tool leaves behind. They bloat run_DAS_Tool/
+                # into thousands of files and slow NFS metadata ops for
+                # downstream rules. Keep the summary, bins, and evals.
+                rm -rf {params.basename}_proteins.faa* {params.basename}.seqlength \
+                    2> /dev/null || true
                 exit 0
             fi
             if grep -qE "No SCGs detected|No single copy genes predicted" {log}; then
@@ -173,6 +180,8 @@ rule consolidate_DAS_Tool_bins:
         done=touch("output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done")
     log:
         "output/logs/selected_bins/{mapper}/consolidate_DAS_Tool_bins/{contig_sample}.log"
+    retries:
+        config['retries']['consolidate_DAS_Tool_bins']
     run:
         import os
         sample = wildcards.contig_sample

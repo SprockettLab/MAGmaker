@@ -42,7 +42,9 @@ set-resources:
   run_gunc:
     mem_mb: 32000       # DIAMOND vs progenomes2.1 OOMs at the 8 GB default
     runtime: 240
-latency-wait: 60
+latency-wait: 300      # isilon can lag well past 60s when a full run's outputs
+                       # land at once; 60 caused spurious MissingOutput failures
+                       # on make_mag_summary and consolidate_DAS_Tool_bins
 rerun-incomplete: true
 keep-going: true
 printshellcmds: true
