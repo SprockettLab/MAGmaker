@@ -127,15 +127,17 @@ rule run_DAS_Tool:
     log:
         "output/logs/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}.log"
     shell:
-        # DAS_Tool's single-copy-gene detection intermittently comes up empty
-        # under high per-node concurrency, reporting no SCGs for both the bacteria
-        # and archaea sets and aborting ("No single copy genes predicted"). This
-        # is a known DAS_Tool fragility (cmks/DAS_Tool#110), not the data, and
-        # here it is nondeterministic -- the same sample succeeds on a re-run --
-        # so we let that specific failure propagate (exit non-zero) to trigger
-        # Snakemake `retries`, while a genuinely empty sample (no bin scored above
-        # the threshold) still writes a header and succeeds. Partial outputs from
-        # a failed attempt are cleared first so each retry starts clean.
+        # DAS_Tool's parallel gene-prediction/SCG stage fails nondeterministically
+        # under high per-node concurrency (a known DAS_Tool fragility,
+        # cmks/DAS_Tool#110), with several signatures: "No SCGs detected", pullseq
+        # "failed to open names file", "Gene prediction failed", and NFS "stale
+        # file handle" reads of its own intermediates. All are transient and clear
+        # on a re-run. So the rule treats any non-zero exit as retryable UNLESS the
+        # log shows the one genuine-empty signature ("No bins with bin-score"),
+        # i.e. a real sample with no bin above the score threshold. Enumerating the
+        # empty case and retrying everything else avoids masking a crash as an
+        # empty sample (which previously dropped richly-binnable samples). Partial
+        # outputs from a failed attempt are cleared first so each retry is clean.
         """
             rm -rf {params.basename}_* {params.basename}.* 2> /dev/null || true
             set +e
@@ -161,12 +163,18 @@ rule run_DAS_Tool:
                     2> /dev/null || true
                 exit 0
             fi
-            if grep -qE "No SCGs detected|No single copy genes predicted" {log}; then
-                echo "Empty predicted-protein set (transient concurrency race); failing for retry." >> {log}
-                exit 1
+            # Non-zero exit: only a genuine "no bin scored above the threshold" is
+            # a real empty sample -- write a header and succeed. Everything else
+            # (SCG race, pullseq/gene-prediction/NFS crashes in DAS_Tool's parallel
+            # plumbing) is transient, so fail and let Snakemake retry rather than
+            # masking a richly-binnable sample as empty.
+            if grep -qE "No bins with bin-score" {log}; then
+                echo "No bins above score threshold; no MAGs for this sample." >> {log}
+                printf "bin_id\n" > {output.out}
+                exit 0
             fi
-            echo "No bins above score threshold; no MAGs for this sample." >> {log}
-            printf "bin_id\n" > {output.out}
+            echo "DAS_Tool failed before scoring (transient/infrastructure); failing for retry." >> {log}
+            exit 1
         """
 
 
