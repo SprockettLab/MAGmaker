@@ -31,10 +31,27 @@ rule run_genomad:
     log:
         "output/logs/virus/genomad/{assembler}/{contig_sample}.log"
     shell:
+        # NB: geNomad's own --cleanup is deliberately NOT used. It calls
+        # shutil.rmtree() on its mmseqs2 scratch dir, which races NFS
+        # silly-rename on isilon: files deleted while a handle is still open
+        # become .nfs* entries, so rmdir fails with OSError ENOTEMPTY
+        # ([Errno 39] Directory not empty: .../besthit_db) and the whole job
+        # exits non-zero AFTER all real outputs are already written. Instead we
+        # let geNomad finish, then remove the heavy module intermediates
+        # ourselves once the process has fully exited (no open handles), keeping
+        # the *_summary dir (+ virus/plasmid .fna) that downstream rules read.
+        # The rm is best-effort (|| true) so a stray .nfs* file can't fail the
+        # job; NFS reaps those once their holder is gone.
         """
-            genomad end-to-end --cleanup --threads {threads} {params.extra} \
+            genomad end-to-end --threads {threads} {params.extra} \
                 {input.contigs} {params.outdir} {params.db} \
                 2> {log} 1>&2
+            rm -rf {params.outdir}/*_annotate \
+                   {params.outdir}/*_aggregated_classification \
+                   {params.outdir}/*_find_proviruses \
+                   {params.outdir}/*_marker_classification \
+                   {params.outdir}/*_nn_classification \
+                   2> /dev/null || true
         """
 
 
