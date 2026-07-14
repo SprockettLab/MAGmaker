@@ -42,6 +42,12 @@ set-resources:
   run_gunc:
     mem_mb: 32000       # DIAMOND vs progenomes2.1 OOMs at the 8 GB default
     runtime: 240
+  run_genomad:
+    mem_mb: 32000       # marker DB search (MMseqs2/aragorn) over all contigs
+    runtime: 480
+  run_checkv:
+    mem_mb: 16000       # DIAMOND/HMMER over just the viral contig subset
+    runtime: 240
 latency-wait: 300      # isilon can lag well past 60s when a full run's outputs
                        # land at once; 60 caused spurious MissingOutput failures
                        # on make_mag_summary and consolidate_DAS_Tool_bins

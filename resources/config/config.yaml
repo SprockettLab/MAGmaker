@@ -80,6 +80,11 @@ params:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd"  # set to "" to auto-download; see README for instructions on other systems
   gunc:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gunc/gunc_db_progenomes2.1.dmnd"  # set to "" to auto-download; see README for instructions on other systems
+  genomad:
+    db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/genomad/genomad_db"  # download once with: genomad download-database <dir>
+    extra: ''  # e.g. '--conservative' for higher-precision viral calls
+  checkv:
+    db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkv/checkv-db-v1.5"  # download once with: checkv download_database <dir>
   kraken2:
     levels: 'P,C,O,F,G,S'
     db: '/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/kraken2/Kraken2_db_Standard'
@@ -108,6 +113,8 @@ threads:
   checkm2: 16
   gunc: 8
   gtdbtk: 16
+  genomad: 16
+  checkv: 8
 
 mem_mb:
   spades: 256000
