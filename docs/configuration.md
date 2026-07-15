@@ -79,6 +79,19 @@ params:
 
 See [Database setup](databases.md) for download instructions.
 
+### Viral track
+
+```yaml
+params:
+  genomad:
+    db_path: /path/to/genomad/genomad_db
+    extra: ''            # extra genomad flags, e.g. '--conservative'
+  checkv:
+    db_path: /path/to/checkv/checkv-db-v1.5
+```
+
+The viral track (geNomad + CheckV) runs by default. It needs both databases set here; if they are not configured, run with `--skip-virus`. See [Viral track](viral.md) and [Database setup](databases.md#genomad).
+
 ### Threads and memory
 
 ```yaml

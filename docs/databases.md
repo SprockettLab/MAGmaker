@@ -95,6 +95,44 @@ Check the [MetaPhlAn wiki](https://huttenhower.sph.harvard.edu/metaphlan/) for t
 
 ---
 
+## geNomad
+
+geNomad identifies and classifies viral and plasmid contigs in the [viral track](viral.md). It uses a marker and classifier database that must be downloaded before the track will run.
+
+```bash
+mamba create -n db_setup -c conda-forge -c bioconda genomad -y
+conda activate db_setup
+
+genomad download-database /your/shared/dbs/genomad/   # creates genomad_db/
+
+conda deactivate
+ls /your/shared/dbs/genomad/genomad_db/   # confirm the database directory
+```
+
+Then set `params.genomad.db_path` to the `genomad_db` directory in `config.yaml`. `params.genomad.extra` passes extra flags to `genomad end-to-end` (e.g. `--conservative` for higher-precision viral calls).
+
+---
+
+## CheckV
+
+CheckV scores the completeness and contamination of the viral contigs geNomad finds. It uses a reference database that must be downloaded before the track will run.
+
+```bash
+mamba create -n db_setup -c conda-forge -c bioconda checkv -y
+conda activate db_setup
+
+checkv download_database /your/shared/dbs/checkv/   # creates checkv-db-v1.5/
+
+conda deactivate
+ls /your/shared/dbs/checkv/   # note the exact checkv-db-v* directory name
+```
+
+Then set `params.checkv.db_path` to the downloaded `checkv-db-v*` directory in `config.yaml`.
+
+> The viral track is on by default. If the geNomad/CheckV databases are not configured, run with `--skip-virus` (see [Viral track](viral.md)).
+
+---
+
 ## Host genome
 
 The host genome FASTA is used by bowtie2 to remove host reads. Any genome FASTA will work; the bowtie2 index is built automatically on first run.

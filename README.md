@@ -29,6 +29,14 @@ MAGs → CheckM2 + GUNC + GTDB-tk → mag_summary.tsv → renamed_mags/
 
 A `generate_binning_config` rule bridges the two stages by reading `selected_prototypes.yaml` and automatically writing the binning configuration file.
 
+**Viral track — geNomad + CheckV (on by default)**
+
+```
+assemblies → geNomad → viral + plasmid contigs → CheckV → virus_summary.tsv
+```
+
+Runs alongside the binning stage and is included by default in `run_magmaker.sh`; disable it with `--skip-virus`. See [Viral track](docs/viral.md).
+
 ---
 
 ## Quick start
@@ -42,8 +50,11 @@ conda activate snakemake
 
 # Edit resources/config/config.yaml, samples.txt, and units.txt
 
-# Run everything (all three stages) — passes all args through to snakemake
+# Run everything (QC → assembly → binning → viral track) — args pass through to snakemake
 ./run_magmaker.sh --cores 8 --use-conda
+
+# Skip the viral track (e.g. if the geNomad/CheckV databases aren't set up)
+./run_magmaker.sh --cores 8 --use-conda --skip-virus
 
 # On an HPC cluster with a Snakemake SLURM profile
 ./run_magmaker.sh --profile resources/profiles/your_cluster
@@ -64,6 +75,7 @@ See the documentation below for details on each step.
 | [Database setup](docs/databases.md) | CheckM2, GUNC, GTDB-tk, MetaPhlAn, host genome |
 | [Running the pipeline](docs/running.md) | Local, HPC/SLURM, `run_magmaker.sh` wrapper, stage-by-stage |
 | [Output](docs/output.md) | Directory layout, MAG summary table, renaming workflow |
+| [Viral track](docs/viral.md) | geNomad + CheckV viral/plasmid discovery, `virus_summary.tsv` |
 | [Running on DEMON (WFUSM)](docs/demon.md) | DEMON cluster setup, pre-configured databases and environments |
 
 ---

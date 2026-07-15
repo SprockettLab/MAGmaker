@@ -4,13 +4,14 @@
 
 ## Overview
 
-MAGmaker runs in up to three stages. The `run_magmaker.sh` wrapper chains all three automatically; alternatively, each stage can be run individually.
+MAGmaker runs in up to four stages. The `run_magmaker.sh` wrapper chains them automatically; alternatively, each stage can be run individually.
 
 | Stage | Command | Output |
 |---|---|---|
 | 1 — Main pipeline | `snakemake` | QC reports, assemblies, prototype selection, MetaPhlAn profiles |
 | 2 — Binning config | `snakemake generate_binning_config` | `output/config/auto_binning.txt` |
 | 3 — Binning pipeline | `snakemake --snakefile Snakefile-bin` | MAGs, QC reports, taxonomy, `mag_summary.tsv` |
+| 4 — Viral track *(on by default)* | `snakemake --snakefile Snakefile-bin virus_all` | geNomad + CheckV, `output/virus/virus_summary.tsv` |
 
 ---
 
@@ -25,7 +26,10 @@ The `run_magmaker.sh` wrapper at the repository root chains all three stages aut
 # Local / interactive
 ./run_magmaker.sh --cores 8 --use-conda
 
-# Dry run (checks all three DAGs without executing)
+# Skip the viral track (stage 4)
+./run_magmaker.sh --profile resources/profiles/your_cluster --skip-virus
+
+# Dry run (checks the DAGs without executing)
 ./run_magmaker.sh --cores 8 --use-conda -n
 ```
 
@@ -34,8 +38,9 @@ The `run_magmaker.sh` wrapper at the repository root chains all three stages aut
 1. Runs the main pipeline (`snakemake "$@"`)
 2. Runs `generate_binning_config` to produce `output/config/auto_binning.txt`
 3. Runs the binning pipeline through `rename_mags` (`snakemake --snakefile Snakefile-bin "$@" rename_mags --config binning=output/config/auto_binning.txt`)
+4. Runs the viral track (`virus_all`) unless `--skip-virus` was passed. `--skip-virus` is consumed by the wrapper and not forwarded to Snakemake; the viral track needs the geNomad/CheckV databases configured (see [Viral track](viral.md)).
 
-**Dry-run behavior:** On a dry run (`-n`), stages 1 and 2 print their DAGs but `auto_binning.txt` is never written (nothing executes). Stage 3 requires `auto_binning.txt` to exist before Snakemake can parse `Snakefile-bin`, so the wrapper detects the missing file and prints a message instead of crashing. Run without `-n` to actually execute stages 1 and 2 first; subsequent runs (including further dry runs) will find the file and show the full stage 3 DAG.
+**Dry-run behavior:** On a dry run (`-n`), stages 1 and 2 print their DAGs but `auto_binning.txt` is never written (nothing executes). Stages 3 and 4 require `auto_binning.txt` to exist before Snakemake can parse `Snakefile-bin`, so the wrapper detects the missing file and prints a message instead of crashing. Run without `-n` to actually execute stages 1 and 2 first; subsequent runs (including further dry runs) will find the file and show the full stage 3 and 4 DAGs.
 
 **Stopping after the MAG summary table** to review/edit `mag_summary.tsv` before renaming: run the stages manually (see below).
 
@@ -157,6 +162,9 @@ SLURM job logs go to `.snakemake/slurm_logs/{rule}/`. Rule-level logs (tool stde
 | `select_bins` | DAS_Tool bin dereplication (requires binning) |
 | `make_mag_summary` | CheckM2 + GUNC + GTDB-tk + combined summary table |
 | `rename_mags` | Copy MAGs to `renamed_mags/` using names from `mag_summary.tsv` |
+| `virus_all` | geNomad + CheckV viral/plasmid discovery → `virus_summary.tsv` (see [Viral track](viral.md)) |
+
+`virus_all` targets need the same `--config binning=output/config/auto_binning.txt` override as the other `Snakefile-bin` targets, so that `Snakefile-bin` can be parsed.
 
 ---
 

@@ -34,13 +34,20 @@ output/
 ├── selected_bins/                      (binning pipeline)
 │   └── {mapper}/DAS_Tool_Fastas/{sample}/  DAS_Tool-selected MAG bins per sample
 │
-└── mag_qc/                             (binning pipeline)
-    ├── checkm2/{mapper}/{sample}/      CheckM2 quality reports
-    ├── gunc/{mapper}/{sample}/         GUNC chimera detection results
-    ├── gtdbtk/{mapper}/{sample}/       GTDB-tk taxonomy outputs
-    ├── mag_summary.tsv                 combined MAG table — editable
-    └── renamed_mags/                   final MAG FASTAs with user-defined names
+├── mag_qc/                             (binning pipeline)
+│   ├── checkm2/{mapper}/{sample}/      CheckM2 quality reports
+│   ├── gunc/{mapper}/{sample}/         GUNC chimera detection results
+│   ├── gtdbtk/{mapper}/{sample}/       GTDB-tk taxonomy outputs
+│   ├── mag_summary.tsv                 combined MAG table — editable
+│   └── renamed_mags/                   final MAG FASTAs with user-defined names
+│
+└── virus/                              (viral track; on by default)
+    ├── genomad/{assembler}/{sample}/   geNomad viral + plasmid contigs and calls
+    ├── checkv/{assembler}/{sample}/    CheckV quality (quality_summary.tsv, viruses.fna)
+    └── virus_summary.tsv               merged viral + plasmid table (all samples)
 ```
+
+The `virus_summary.tsv` schema and the full `output/virus/` layout are documented on the [Viral track](viral.md) page.
 
 ---
 
