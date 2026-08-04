@@ -14,7 +14,72 @@ Key settings to review before running:
 trimmer: fastp   # fastp (default) or cutadapt
 ```
 
-fastp auto-detects adapters. Cutadapt requires adapter sequences in `params.cutadapt`. Both options run FastQC before and after trimming and feed into MultiQC.
+Both options run FastQC before and after trimming and feed into MultiQC.
+
+Cutadapt requires adapter sequences in `params.cutadapt`. fastp is configured
+in `params.fastp.extra`, which by default passes:
+
+```
+--detect_adapter_for_pe --adapter_fasta resources/adapters/illumina_adapters.fa --trim_poly_g --trim_poly_x
+```
+
+These are set explicitly rather than relying on fastp's defaults, because
+the defaults are conditional and quietly do less than expected:
+
+- **Adapter detection is weaker for paired-end input.** fastp only
+  auto-detects adapter *sequences* for single-end reads. For paired-end it
+  infers adapters from per-read overlap analysis, which leaves residual 3'
+  adapter behind when the overlap is short or low quality.
+  `--detect_adapter_for_pe` turns sequence detection on, and
+  `--adapter_fasta` additionally trims the known TruSeq/Nextera sequences.
+- **polyG trimming depends on the read header.** fastp enables it only when
+  it recognises a NextSeq/NovaSeq instrument ID in the read name, and for
+  archived data that is unreliable. Deflines differ across SRA datasets:
+
+  ```
+  @SRR36840144.1 A00814:609:HMHW7DSX3:1:1101:10004:4726 length=151
+  @SRR36840144.1 1 length=151
+  @A00814:715:HVFYYDRX2:1:1101:18114:1016 1:N:0:...          (native)
+  ```
+
+  Some runs carry the original Illumina name and some do not, and even when
+  present it is not in the leading field where native output puts it. So
+  whether 2-colour polyG tails get trimmed can differ between datasets that
+  are meant to be compared directly. `--trim_poly_g` removes
+  the dependence on header parsing, and `--trim_poly_x` additionally catches
+  polyA read-through, which the adapter panel cannot cover.
+
+### Adapter panel
+
+`resources/adapters/illumina_adapters.fa` is a deliberately **comprehensive
+guard set**, not a minimal one, so the same file can be reused across DNA and
+RNA library types without editing. It covers:
+
+| Group | Constructs |
+|---|---|
+| TruSeq | Read 1 / Read 2 adapters, indexed-adapter pre-index segment, post-index constant region, PE bottom adapter |
+| Flowcell primers | P5, P7 (full and short forms) |
+| Sequencing primers | Read 1, Read 2 |
+| Nextera / Tn5 | mosaic end (both orientations), Read 1 / Read 2 adapters, i5 and i7 transposome sequences |
+| Tagmentation / RNA prep | Illumina DNA PCR-Free, Illumina Stranded mRNA and Total RNA Prep |
+| Small RNA | TruSeq Small RNA 5' and 3' adapters |
+
+Sequences are taken from Illumina's
+[adapter-trimming reference](https://knowledge.illumina.com/library-preparation/general/library-preparation-general-reference_material-list/000001314)
+and [Illumina Adapter Sequences (doc #1000000002694)](https://support.illumina.com/downloads/illumina-adapter-sequences-document-1000000002694.html).
+
+Two constructs are worth calling out because they are commonly omitted and
+were the source of real misassignments: the **P5/Read 1 sequencing primer**
+(`ACACTCTTTCCCTACACGACGCTCTTCCGATCT`) and the **post-index constant region**
+(`ATCTCGTATGCCGTCTTCTGCTTG`, the reverse complement of the P7 primer). Reads
+consisting entirely of these have been mistaken for viral genomes, because
+some public assemblies contain untrimmed adapter at the matching position.
+
+Because the panel favours coverage over minimality, a few short entries
+(16-20 bp) carry a slightly higher chance of spurious trimming than the
+33-61 bp constructs. That trade is intentional. Set
+`params.fastp.extra: ""` to restore fastp's stock behaviour, or point
+`--adapter_fasta` at a trimmed-down file for a specific library type.
 
 ### Assembler(s)
 

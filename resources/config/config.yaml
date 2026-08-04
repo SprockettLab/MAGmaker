@@ -34,7 +34,38 @@ profilers:
 
 params:
   fastp:
-    extra: ""  # fastp auto-detects adapters; add flags here to override (e.g. --disable_adapter_trimming)
+    # Adapter and polyG removal are both made EXPLICIT here rather than left
+    # to fastp's defaults, because both defaults are conditional:
+    #
+    #   --detect_adapter_for_pe
+    #     For paired-end input fastp does NOT auto-detect adapter sequences;
+    #     it only infers them from per-read overlap analysis, which leaves
+    #     residual 3' adapter when the overlap is short or low quality.
+    #     Sequence auto-detection is on by default for SE data only.
+    #
+    #   --adapter_fasta
+    #     Belt-and-braces: trims the known TruSeq/Nextera sequences even
+    #     when overlap analysis and detection both miss them.
+    #
+    #   --trim_poly_g
+    #     fastp enables polyG trimming only when it recognises a NextSeq or
+    #     NovaSeq instrument ID in the read header. For SRA re-exports that
+    #     is not something you can rely on. Deflines differ across datasets:
+    #
+    #       @SRR36840144.1 A00814:609:HMHW7DSX3:1:1101:10004:4726 length=151
+    #       @SRR36840144.1 1 length=151
+    #       @A00814:715:HVFYYDRX2:1:1101:18114:1016 1:N:0:...   (native)
+    #
+    #     Some SRA runs carry the original Illumina name, some do not, and
+    #     even when present it is not in the leading field where native
+    #     output puts it. Detection is therefore unreliable for archived
+    #     data. Forcing the flag removes the dependency entirely.
+    #
+    #   --trim_poly_x
+    #     Catches polyA read-through (and other homopolymer tails), which
+    #     the adapter panel cannot cover. Matters for RNA-derived libraries
+    #     and is harmless for DNA.
+    extra: "--detect_adapter_for_pe --adapter_fasta resources/adapters/illumina_adapters.fa --trim_poly_g --trim_poly_x"
   cutadapt:
     adapter: '-a GATCGGAAGAGC -a GGGGGGGGGGGGGGGGGGGG -A GATCGGAAGAGC -A GGGGGGGGGGGGGGGGGGGG'
     other: "-u 10 -U 10 --minimum-length 1 --nextseq-trim 20"
