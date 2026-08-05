@@ -40,7 +40,7 @@ cd MAGmaker
 mamba env create -n snakemake -f resources/env/snakemake.yaml
 conda activate snakemake
 
-# Edit resources/config/config.yaml, samples.txt, and units.txt
+# Edit resources/config/config.yaml and metadata.txt
 
 # Run everything (all three stages) — passes all args through to snakemake
 ./run_magmaker.sh --cores 8 --use-conda
@@ -60,7 +60,7 @@ See the documentation below for details on each step.
 | Page | Contents |
 |---|---|
 | [Installation](docs/installation.md) | Requirements, conda setup, test data |
-| [Configuration](docs/configuration.md) | `config.yaml`, `samples.txt`, `units.txt`, `binning.txt` |
+| [Configuration](docs/configuration.md) | `config.yaml`, `metadata.txt`, `binning.txt` |
 | [Database setup](docs/databases.md) | CheckM2, GUNC, GTDB-tk, MetaPhlAn, host genome |
 | [Running the pipeline](docs/running.md) | Local, HPC/SLURM, `run_magmaker.sh` wrapper, stage-by-stage |
 | [Output](docs/output.md) | Directory layout, MAG summary table, renaming workflow |

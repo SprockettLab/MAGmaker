@@ -37,7 +37,7 @@ The repository includes a minimal test dataset to verify the pipeline is install
 - **Reads:** `resources/test/test_reads/{John,Paul,George,Ringo}_{R1,R2}.fastq.gz` — tiny FASTQ files
 - **Host index:** `resources/test/test_dbs/GCA_000001635.9.*` — pre-built bowtie2 index for mouse chromosome 1 (tiny subset, sufficient for testing host filter logic)
 
-The default `samples.txt`, `units.txt`, and `binning.txt` point to this test data. To run a test:
+The default `metadata.txt` and `binning.txt` point to this test data. To run a test:
 
 ```bash
 conda activate snakemake

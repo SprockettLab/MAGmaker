@@ -3,20 +3,10 @@ from os.path import join
 
 configfile: "config.yaml"
 
-samples_fp = config['samples']
-
-units_fp = config['units']
-
-reads = config['reads']
-
-sample_table = pd.read_csv(samples_fp, sep='\t', header=0)
-sample_table.set_index('Sample', inplace=True)
-
-units_table = pd.read_csv(units_fp, sep='\t', header=0)
-units_table.set_index(['Sample', 'Unit'], inplace=True)
-
-samples = sample_table.index
-units = units_table.index
+# Loads the metadata table and defines metadata_table, samples, seqruns,
+# reads, get_read() and seqruns_for(). Shared with Snakefile so the two
+# stages cannot disagree about the sample sheet.
+include: "resources/snakefiles/common.smk"
 
 binning_fp = config['binning']
 
@@ -25,9 +15,6 @@ binning_df = pd.read_csv(binning_fp,
                          index_col=0,
                          sep='\t',
                          na_filter=False)
-
-def get_read(sample, unit, read):
-    return(units_table.loc[(sample, unit), read])
 
 def parse_groups(group_series):
     groups = {}
