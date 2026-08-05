@@ -49,8 +49,7 @@ The default `config.yaml` is already configured for DEMON. All databases are pre
 The only things you need to change in `config.yaml` before running are:
 
 1. **`host_filter.genome`** — path to your host genome FASTA (human GRCh38 bowtie2 index is already built; set `db_dir` to the path above)
-2. **`samples`** — path to your `samples.txt` file
-3. **`units`** — path to your `units.txt` file
+2. **`metadata`** — path to your `metadata.txt` file
 
 See [Configuration](configuration.md) for the format of these files.
 
@@ -132,7 +131,7 @@ snakemake --profile resources/profiles/demon \
 
 ## Private analysis files
 
-Project-specific `samples.txt`, `units.txt`, and `binning.txt` files should be named with a project prefix (e.g., `MyProject_samples.txt`) and stored in `resources/config/`. The `.gitignore` excludes `*_samples.txt`, `*_units.txt`, and `*_binning.txt` to prevent accidental commits of data containing patient or project identifiers.
+Project-specific `metadata.txt` and `binning.txt` files should be named with a project prefix (e.g., `MyProject_metadata.txt`) and stored in `resources/config/`. The `.gitignore` excludes `*_metadata.txt`, `*_binning.txt` and `*_config.yaml` to prevent accidental commits of data containing patient or project identifiers.
 
 ---
 

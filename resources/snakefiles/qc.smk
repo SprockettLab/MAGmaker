@@ -9,52 +9,56 @@ trimmer = config['trimmer']
 def trimmer_output(wildcards):
     """Trimmed reads path for the configured trimmer."""
     return "output/qc/{t}/{s}.{u}.{r}.fastq.gz".format(
-        t=trimmer, s=wildcards.sample, u=wildcards.unit, r=wildcards.read
+        t=trimmer, s=wildcards.sample, u=wildcards.seqrun, r=wildcards.read
     )
 
 
 def merged_reads(sample, read):
-    """Trimmed reads path for host_filter: skip merge_units for single-unit samples."""
-    units = list(units_table.loc[sample].index)
-    if len(units) == 1:
+    """Trimmed reads path for host_filter.
+
+    A sample sequenced once needs no concatenation, so its trimmed FASTQ is
+    used directly and merge_seqruns never runs for it -- nothing is copied or
+    linked. Only multi-run samples pay the cat."""
+    runs = seqruns_for(sample)
+    if len(runs) == 1:
         return "output/qc/{t}/{s}.{u}.{r}.fastq.gz".format(
-            t=trimmer, s=sample, u=units[0], r=read
+            t=trimmer, s=sample, u=runs[0], r=read
         )
-    return "output/qc/merge_units/{s}.combined.{r}.fastq.gz".format(
+    return "output/qc/merge_seqruns/{s}.combined.{r}.fastq.gz".format(
         s=sample, r=read
     )
 
 
-def trimmer_qc_logs(units_table):
+def trimmer_qc_logs(metadata_table):
     """Trimmer-specific QC files collected by MultiQC."""
     if trimmer == 'fastp':
         return expand(
             "output/qc/fastp/{u.Index[0]}.{u.Index[1]}.fastp.json",
-            u=units_table.itertuples()
+            u=metadata_table.itertuples()
         )
     else:
         return expand(
             "output/logs/qc/cutadapt/{u.Index[0]}.{u.Index[1]}.txt",
-            u=units_table.itertuples()
+            u=metadata_table.itertuples()
         )
 
 
 rule fastqc_pre_trim:
     input:
         lambda wildcards: get_read(wildcards.sample,
-                                   wildcards.unit,
+                                   wildcards.seqrun,
                                    wildcards.read)
     output:
-        html="output/qc/fastqc_pre_trim/{sample}.{unit}.{read}.html",
-        zip="output/qc/fastqc_pre_trim/{sample}.{unit}.{read}_fastqc.zip"
+        html="output/qc/fastqc_pre_trim/{sample}.{seqrun}.{read}.html",
+        zip="output/qc/fastqc_pre_trim/{sample}.{seqrun}.{read}_fastqc.zip"
     benchmark:
-        "output/benchmarks/qc/fastqc_pre_trim/{sample}.{unit}.{read}_benchmark.txt"
+        "output/benchmarks/qc/fastqc_pre_trim/{sample}.{seqrun}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
     conda:
         "../env/fastqc.yaml"
     log:
-        "output/logs/qc/fastqc_pre_trim/{sample}.{unit}.{read}.log"
+        "output/logs/qc/fastqc_pre_trim/{sample}.{seqrun}.{read}.log"
     shell:
         """
         OUTDIR=$(dirname {output.html})
@@ -69,13 +73,13 @@ rule fastqc_pre_trim:
 
 rule fastp_pe:
     input:
-        R1=lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R1'),
-        R2=lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R2')
+        R1=lambda wildcards: get_read(wildcards.sample, wildcards.seqrun, 'R1'),
+        R2=lambda wildcards: get_read(wildcards.sample, wildcards.seqrun, 'R2')
     output:
-        R1=temp("output/qc/fastp/{sample}.{unit}.R1.fastq.gz"),
-        R2=temp("output/qc/fastp/{sample}.{unit}.R2.fastq.gz"),
-        json="output/qc/fastp/{sample}.{unit}.fastp.json",
-        html="output/qc/fastp/{sample}.{unit}.fastp.html"
+        R1=temp("output/qc/fastp/{sample}.{seqrun}.R1.fastq.gz"),
+        R2=temp("output/qc/fastp/{sample}.{seqrun}.R2.fastq.gz"),
+        json="output/qc/fastp/{sample}.{seqrun}.fastp.json",
+        html="output/qc/fastp/{sample}.{seqrun}.fastp.html"
     params:
         extra=config['params']['fastp']['extra']
     threads:
@@ -83,9 +87,9 @@ rule fastp_pe:
     conda:
         "../env/fastp.yaml"
     log:
-        "output/logs/qc/fastp/{sample}.{unit}.log"
+        "output/logs/qc/fastp/{sample}.{seqrun}.log"
     benchmark:
-        "output/benchmarks/qc/fastp/{sample}.{unit}_benchmark.txt"
+        "output/benchmarks/qc/fastp/{sample}.{seqrun}_benchmark.txt"
     shell:
         """
         fastp \
@@ -100,19 +104,19 @@ rule fastp_pe:
 
 rule cutadapt_pe:
     input:
-        R1=lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R1'),
-        R2=lambda wildcards: get_read(wildcards.sample, wildcards.unit, 'R2')
+        R1=lambda wildcards: get_read(wildcards.sample, wildcards.seqrun, 'R1'),
+        R2=lambda wildcards: get_read(wildcards.sample, wildcards.seqrun, 'R2')
     output:
-        fastq1=temp("output/qc/cutadapt/{sample}.{unit}.R1.fastq.gz"),
-        fastq2=temp("output/qc/cutadapt/{sample}.{unit}.R2.fastq.gz"),
-        qc="output/logs/qc/cutadapt/{sample}.{unit}.txt"
+        fastq1=temp("output/qc/cutadapt/{sample}.{seqrun}.R1.fastq.gz"),
+        fastq2=temp("output/qc/cutadapt/{sample}.{seqrun}.R2.fastq.gz"),
+        qc="output/logs/qc/cutadapt/{sample}.{seqrun}.txt"
     params:
         adapters=config["params"]["cutadapt"]['adapter'],
         extra=config["params"]["cutadapt"]['other']
     benchmark:
-        "output/benchmarks/qc/cutadapt/{sample}.{unit}_benchmark.txt"
+        "output/benchmarks/qc/cutadapt/{sample}.{seqrun}_benchmark.txt"
     log:
-        "output/logs/qc/cutadapt/{sample}.{unit}.log"
+        "output/logs/qc/cutadapt/{sample}.{seqrun}.log"
     threads:
         config['threads']['cutadapt_pe']
     conda:
@@ -134,16 +138,16 @@ rule fastqc_post_trim:
     input:
         trimmer_output
     output:
-        html="output/qc/fastqc_post_trim/{sample}.{unit}.{read}.html",
-        zip="output/qc/fastqc_post_trim/{sample}.{unit}.{read}_fastqc.zip"
+        html="output/qc/fastqc_post_trim/{sample}.{seqrun}.{read}.html",
+        zip="output/qc/fastqc_post_trim/{sample}.{seqrun}.{read}_fastqc.zip"
     benchmark:
-        "output/benchmarks/qc/fastqc_post_trim/{sample}.{unit}.{read}_benchmark.txt"
+        "output/benchmarks/qc/fastqc_post_trim/{sample}.{seqrun}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
     conda:
         "../env/fastqc.yaml"
     log:
-        "output/logs/qc/fastqc_post_trim/{sample}.{unit}.{read}.log"
+        "output/logs/qc/fastqc_post_trim/{sample}.{seqrun}.{read}.log"
     shell:
         """
         OUTDIR=$(dirname {output.html})
@@ -156,21 +160,21 @@ rule fastqc_post_trim:
         """
 
 
-rule merge_units:
+rule merge_seqruns:
     input:
         lambda wildcards: expand(
             "output/qc/{t}/{s}.{u}.{r}.fastq.gz",
             t=trimmer,
             s=wildcards.sample,
-            u=list(units_table.loc[wildcards.sample].index),
+            u=seqruns_for(wildcards.sample),
             r=wildcards.read
         )
     output:
-        temp("output/qc/merge_units/{sample}.combined.{read}.fastq.gz")
+        temp("output/qc/merge_seqruns/{sample}.combined.{read}.fastq.gz")
     benchmark:
-        "output/benchmarks/qc/merge_units/{sample}.combined.{read}_benchmark.txt"
+        "output/benchmarks/qc/merge_seqruns/{sample}.combined.{read}_benchmark.txt"
     log:
-        "output/logs/qc/merge_units/{sample}.combined.{read}.log"
+        "output/logs/qc/merge_seqruns/{sample}.combined.{read}.log"
     threads: 1
     shell:
         "cat {input} > {output[0]} 2> {log}"
@@ -266,13 +270,13 @@ rule fastqc_post_host:
 
 rule multiqc:
     input:
-        expand("output/qc/fastqc_pre_trim/{units.Index[0]}.{units.Index[1]}.{read}.html",
-               units=units_table.itertuples(), read=reads),
-        lambda wildcards: trimmer_qc_logs(units_table),
-        expand("output/qc/fastqc_post_trim/{units.Index[0]}.{units.Index[1]}.{read}.html",
-               units=units_table.itertuples(), read=reads),
-        expand("output/qc/fastqc_post_host/{units.Index[0]}.{read}.html",
-               units=units_table.itertuples(), read=reads),
+        expand("output/qc/fastqc_pre_trim/{seqruns.Index[0]}.{seqruns.Index[1]}.{read}.html",
+               seqruns=metadata_table.itertuples(), read=reads),
+        lambda wildcards: trimmer_qc_logs(metadata_table),
+        expand("output/qc/fastqc_post_trim/{seqruns.Index[0]}.{seqruns.Index[1]}.{read}.html",
+               seqruns=metadata_table.itertuples(), read=reads),
+        expand("output/qc/fastqc_post_host/{seqruns.Index[0]}.{read}.html",
+               seqruns=metadata_table.itertuples(), read=reads),
         lambda wildcards: expand(rules.host_filter.log, sample=samples)
     output:
         "output/qc/multiqc/multiqc.html"

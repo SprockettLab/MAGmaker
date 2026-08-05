@@ -1,16 +1,18 @@
 # bowtie2 indexes
 resources/db/bt2/*
 
-# Project-specific run configs (samples/units/binning/config for real datasets)
-# Convention: name these <Project>_samples.txt etc. to keep them out of the repo.
-# The defaults (samples.txt, units.txt, binning.txt, config.yaml) point to test
+# Project-specific run configs (metadata/binning/config for real datasets)
+# Convention: name these <Project>_metadata.txt etc. to keep them out of the
+# repo. The defaults (metadata.txt, binning.txt, config.yaml) point to test
 # data and stay in. Pass a project config with `snakemake --configfile <file>`;
 # its values override the tracked config.yaml, so branch checkouts never touch
 # your real settings.
-resources/config/*_samples.txt
-resources/config/*_units.txt
+resources/config/*_metadata.txt
 resources/config/*_binning.txt
 resources/config/*_config.yaml
+# legacy names, kept ignored so old working copies stay clean
+resources/config/*_samples.txt
+resources/config/*_units.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

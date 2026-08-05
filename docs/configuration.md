@@ -165,34 +165,56 @@ Assembly rules (`megahit`, `metaspades`) auto-scale their memory request based o
 
 ---
 
-## `samples.txt`
+## `metadata.txt`
 
-Tab-separated. One row per sample. The first column must be named `Sample`.
+One tab-separated table describing every sequencing run. This replaces the
+former `samples.txt` + `units.txt` pair.
 
-```
-Sample    Subject    Timepoint
-John      Beatles    1963
-Paul      Beatles    1963
-```
-
-Additional columns are carried through but not used by the pipeline.
-
----
-
-## `units.txt`
-
-Tab-separated. One row per sequencing unit (e.g., per lane or per run). Columns: `Sample`, `Unit`, `R1`, `R2`.
+**Required columns:** `Sample`, `Sequencing_Run`, `R1_fp`, `R2_fp`
 
 ```
-Sample    Unit      R1                         R2
-John      Run_1     /path/to/John_R1.fastq.gz  /path/to/John_R2.fastq.gz
-Paul      Run_1     /path/to/Paul_R1.fastq.gz  /path/to/Paul_R2.fastq.gz
-Paul      Run_2     /path/to/Paul_lane2_R1.gz  /path/to/Paul_lane2_R2.gz
+Sample   Sequencing_Run   R1_fp                       R2_fp                       Treatment_Group   Timepoint
+John     Run_1            /path/John_R1.fastq.gz      /path/John_R2.fastq.gz      Treatment         1963
+Paul     Run_1            /path/Paul_R1.fastq.gz      /path/Paul_R2.fastq.gz      Treatment         1963
+Paul     Run_2            /path/Paul_L2_R1.fastq.gz   /path/Paul_L2_R2.fastq.gz   Treatment         1963
+George   Run_1            /path/George_R1.fastq.gz    /path/George_R2.fastq.gz    Control           1963
 ```
 
-Multiple units for the same sample are automatically concatenated by the `merge_units` rule before assembly. If a sample has only one unit, a symlink is created instead of copying (no I/O overhead).
+One row per sequencing run: a sample sequenced on two lanes, or resequenced,
+gets one row per run with the same `Sample` value. The sample list is taken
+from the unique values of `Sample`, so no separate sample sheet is needed.
 
-Paths in `R1` and `R2` can be absolute or relative to the working directory.
+The `_fp` suffix marks the two columns that hold **f**ile **p**aths. Paths may
+be absolute or relative to the working directory.
+
+**Any further columns are yours.** Study covariates -- treatment, timepoint,
+subject, batch -- are carried through untouched and can be read inside a rule:
+
+```python
+metadata_table.loc[(sample, seqrun), "Treatment_Group"]
+```
+
+Multiple runs for the same sample are concatenated by the `merge_seqruns` rule
+before assembly. A sample with a single run skips that rule entirely: its
+trimmed FASTQ is used directly, so nothing is copied or linked.
+
+The table is validated on load. Missing required columns, empty required
+fields, duplicate `(Sample, Sequencing_Run)` pairs, and a file that is
+space- rather than tab-separated each produce a specific error naming the
+offending rows, rather than failing later inside the workflow.
+
+### Migrating from samples.txt + units.txt
+
+`samples.txt` is no longer used -- its only role was listing sample names,
+which `metadata.txt` already provides. Rename the `units.txt` header:
+
+```bash
+sed '1s/.*/Sample\tSequencing_Run\tR1_fp\tR2_fp/' units.txt > metadata.txt
+```
+
+then replace `samples:` and `units:` in your config with a single
+`metadata:` key. A config still using the old keys fails immediately with
+these instructions rather than a confusing error.
 
 ---
 
@@ -213,7 +235,7 @@ Samples that share a group label in both `Read_Groups` and `Contig_Groups` are p
 - A sample with a `Contigs` path and a `Contig_Groups` label contributes an assembly to that group.
 - A sample with a `Read_Groups` label contributes reads to that group.
 - A sample can belong to both (contributing both reads and an assembly).
-- A sample with neither label is present in `samples.txt` but skipped by the binning pipeline.
+- A sample with neither label is present in `metadata.txt` but skipped by the binning pipeline.
 
 **This file is normally generated automatically** by the `generate_binning_config` rule (see [Running the pipeline](running.md)).
 
