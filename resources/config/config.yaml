@@ -167,8 +167,19 @@ params:
     extra: ''
 
   prototypes:
+    # Depth bounds on which samples may serve as prototypes. Both are
+    # compared against fastp's total_reads, which counts BOTH mates -- so a
+    # "50M read" library is 100M by this measure, and the ceiling bites at
+    # half the depth you might expect.
+    #
+    # max_seqs excludes the DEEPEST samples, which are the ones that make
+    # the best differential-coverage basis for binning. The old 100000000
+    # default silently dropped the top 4% of a 341-sample gut cohort
+    # (deepest run 138.5M reads). Sketching is cheap, so the ceiling is set
+    # high enough to keep everything and exists only as a guard against a
+    # pathological input.
     min_seqs: 50          # recommended for real data: 10000000
-    max_seqs: 100000000
+    max_seqs: 200000000
     n: 10                 # representative samples selected for binning
 
   # ── 5  MAPPING ─────────────────────────────────────────────────────────────

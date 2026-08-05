@@ -108,9 +108,22 @@ A **complete** existing index is detected and reused — useful for shared refer
 ```yaml
 params:
   prototypes:
-    n: 10            # number of representative samples to select for binning
-    min_seqs: 50     # minimum reads to include a sample in sourmash sketch
+    n: 10                  # representative samples selected for binning
+    min_seqs: 50           # depth floor; use 10000000 for real data
+    max_seqs: 200000000    # depth ceiling
 ```
+
+Both depth bounds are compared against fastp's `total_reads`, which counts
+**both mates** — a library described as "50M reads" is 100M by this measure,
+so the ceiling bites at half the depth you might expect.
+
+`max_seqs` excludes the *deepest* samples, and those are exactly the ones
+that make the best differential-coverage basis for binning. The previous
+`100000000` default silently dropped the top 4% of a 341-sample gut cohort
+(deepest run 138.5M reads) without warning. Sketching is cheap, so the
+ceiling is now high enough to retain everything and serves only as a guard
+against a pathological input. Check your own depth distribution before
+lowering it.
 
 `n` determines how many prototype samples are selected by `prototype_selection` and used by `generate_binning_config` to populate `binning.txt`. Setting `n` higher produces better binning coverage but more assembly/mapping jobs.
 
