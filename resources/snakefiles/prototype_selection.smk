@@ -261,7 +261,7 @@ rule prototype_selection:
             # Run names come from the metadata table (e.g. 'Run1'); must not
             # be hardcoded, since fastp writes one JSON per {sample}.{seqrun}.
             seqs = 0
-            for unit in seqruns_for(sample):
+            for seqrun in seqruns_for(sample):
                 fastp_json = f"output/qc/fastp/{sample}.{seqrun}.fastp.json"
                 with open(fastp_json) as jf:
                     summary = json.load(jf)['summary']
