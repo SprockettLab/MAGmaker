@@ -99,7 +99,9 @@ host_filter:
   db_dir: /path/to/bt2_index_dir/
 ```
 
-The bowtie2 index is built automatically from the FASTA on first run if it doesn't exist in `db_dir`. The index name is derived from the FASTA filename stem.
+The index name is derived from the FASTA filename stem, so `genome: /path/human.fna` expects `/path/human.*.bt2` in `db_dir`.
+
+A **complete** existing index is detected and reused — useful for shared references, where rebuilding a human genome costs hours. The index is built only when all six parts (`.1`, `.2`, `.3`, `.4`, `.rev.1`, `.rev.2`, in either `.bt2` or `.bt2l` form) are not already present, so a partial index left by an interrupted build is rebuilt rather than silently accepted. Completion is tracked with a `<stem>.bowtie2_build.done` sentinel, since bowtie2 chooses between the small and large index layouts based on reference size and the output filenames cannot be declared up front.
 
 ### Prototype selection
 
