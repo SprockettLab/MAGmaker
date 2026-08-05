@@ -189,8 +189,7 @@ rule host_bowtie2_build:
         # fixed .bt2 outputs breaks on large hosts (e.g. multi-genome
         # vervet references), where only .bt2l files appear. Track a
         # sentinel instead; `bowtie2 -x` auto-detects the index layout at
-        # align time. To reuse a prebuilt index without rebuilding, touch
-        # this file next to the existing index (same stem as host_base).
+        # align time.
         touch(host_base + ".bowtie2_build.done")
     log:
         "output/logs/qc/host_bowtie2_build/host_bowtie2_build.log"
@@ -204,9 +203,35 @@ rule host_bowtie2_build:
     threads:
         config['threads']['host_filter']
     shell:
+        # A complete index next to the reference is reused rather than
+        # rebuilt. Shared host indexes commonly predate the sentinel, and
+        # rebuilding a human genome costs hours -- silently, since the only
+        # symptom is host_bowtie2_build appearing in the job list.
+        #
+        # All six parts must be present before the build is skipped: a
+        # partial index (an interrupted build, an incomplete copy) would
+        # otherwise be accepted and fail later inside bowtie2, which is a
+        # much harder failure to trace back to its cause. Small (.bt2) and
+        # large (.bt2l) layouts are checked separately, since a reference
+        # produces one or the other, never a mixture.
         """
-        bowtie2-build --threads {threads} {params.extra} \
-        {input.reference} {params.indexbase} 2> {log} 1>&2
+        IDX="{params.indexbase}"
+        FOUND=0
+        for suffix in bt2 bt2l; do
+            COMPLETE=1
+            for part in 1 2 3 4 rev.1 rev.2; do
+                [ -f "$IDX.$part.$suffix" ] || COMPLETE=0
+            done
+            if [ "$COMPLETE" -eq 1 ]; then FOUND=1; fi
+        done
+
+        if [ "$FOUND" -eq 1 ]; then
+            echo "Complete bowtie2 index already present at $IDX" > {log}
+            echo "Skipping bowtie2-build; touching sentinel instead." >> {log}
+        else
+            bowtie2-build --threads {threads} {params.extra} \
+            {input.reference} "$IDX" 2> {log} 1>&2
+        fi
         """
 
 

@@ -214,12 +214,11 @@ params:
 # ═════════════════════════════════════════════════════════════════════════════
 # HOST FILTER
 # ═════════════════════════════════════════════════════════════════════════════
-# Stage 1. The bowtie2 index is built from `genome` on first run if it is not
-# already in `db_dir`. The index stem is the FASTA filename with its extension
-# removed, so genome=/path/human.fna expects /path/human.*.bt2.
+# Stage 1. The index stem is the FASTA filename with its extension removed,
+# so genome=/path/human.fna expects /path/human.*.bt2 in db_dir.
 #
-# To reuse a prebuilt index without rebuilding, touch the sentinel next to it:
-#   touch <db_dir>/<stem>.bowtie2_build.done
+# A complete existing index is detected and reused; the index is only built
+# when one is absent or incomplete. Nothing needs to be touched by hand.
 #
 # Pre-built indexes on demon (/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/):
 #   human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna
