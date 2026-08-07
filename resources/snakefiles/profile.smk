@@ -109,6 +109,14 @@ rule metaphlan:
         bt2="output/profile/metaphlan/bowtie2s/{sample}.bowtie2.bz2",
         sam="output/profile/metaphlan/sams/{sample}.sam.bz2",
         profile="output/profile/metaphlan/profiles/{sample}.txt"
+    retries:
+        config['retries'].get('metaphlan', 2)
+    resources:
+        # Peaked at 29.7 GB against a 32 GB allocation on a 341-sample
+        # gut cohort -- 93%, i.e. the next OOM waiting to happen. The
+        # footprint is driven by the bowtie2 index and read volume,
+        # both of which vary by sample.
+        mem_mb=mem_escalate('metaphlan', base_default=32000)
     conda:
         "../env/profile.yaml"
     threads:

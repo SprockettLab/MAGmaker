@@ -311,6 +311,18 @@ mem_mb:
   # running slower.
   gtdbtk: 128000        # first attempt
   gtdbtk_max: 320000    # ceiling on retry (2nd attempt asks 256000)
+  #
+  # The rules below use the same escalate-on-retry scheme (mem_escalate in
+  # common.smk): the value here is the FIRST attempt, <key>_max is the
+  # ceiling, and each retry doubles. Absent a _max the cap is 4x the base.
+  # Only rules with evidence of pressure are listed; everything else takes
+  # the profile default.
+  # Values chosen from measured peak RSS on a 341-sample gut cohort, not
+  # from guesswork -- three rules that looked at risk structurally measured
+  # under 10% of the default and are deliberately left alone.
+  map_reads_minimap2: 12000     # measured 7972 MB against the 8000 default
+  metaphlan: 32000              # measured 29688 MB against 32000
+  sort_index_bam: 12000         # measured 6831 MB against the 8000 default
 
 
 # ═════════════════════════════════════════════════════════════════════════════
