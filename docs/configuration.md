@@ -173,10 +173,42 @@ mem_mb:
   megahit: 256000    # ceiling; actual request auto-scales with input size
   spades: 256000
   checkm2: 32000
-  gtdbtk: 128000
+  gtdbtk: 128000     # first attempt
+  gtdbtk_max: 320000 # ceiling; retries request gtdbtk * attempt, capped
 ```
 
 Assembly rules (`megahit`, `metaspades`) auto-scale their memory request based on input size (`max(16000, input_size_mb × 10)`) up to the configured ceiling. All other rules use their configured value directly.
+
+**GTDB-Tk is the one to watch, and it escalates.** Its memory is dominated by
+pplacer during `classify_wf`, and the requirement scales with the number of
+bins: on a 341-sample gut cohort, 324 samples finished inside 128 GB while 17
+were OOM-killed. The failure surfaces only at the very end of the pipeline,
+since MAG QC is the last stage.
+
+Sizing every request for the worst case is the wrong fix. `mem_mb` is a
+scheduler *reservation*, so a flat 300 GB request confines every sample to
+whichever nodes are that large and serialises the stage. Instead `gtdbtk` is
+the **first attempt** and `gtdbtk_max` the **ceiling**; the rule requests
+`gtdbtk × attempt` capped at `gtdbtk_max`, with retries from
+`retries.run_gtdbtk`. Most samples schedule anywhere on the first try and
+only the heavy ones wait for a large node:
+
+| attempt | request |
+|---|---|
+| 1 | 128 GB |
+| 2 | 256 GB |
+| 3 | 320 GB (capped) |
+
+Check what your nodes can actually supply with `sinfo -o "%n %m"`. If none
+reach the ceiling, pass `--scratch_dir` to gtdbtk instead: pplacer then mmaps
+the reference to disk, needing far less RAM but running slower.
+
+Runtimes come from the cluster profile rather than `config.yaml`. Note that
+**`fastp` is the rule most exposed to slow shared storage**, since it reads
+every raw FASTQ: on the `demon` profile it is given 360 minutes rather than
+the 120-minute default, after a 2.4 GB library was cancelled four minutes
+inside the limit while the filesystem was saturated. The compute is minutes;
+the variance is I/O.
 
 ---
 
