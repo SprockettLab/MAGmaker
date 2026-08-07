@@ -98,8 +98,18 @@ rule run_gtdbtk:
         db_path=config['params']['gtdbtk']['db_path']
     threads:
         config['threads']['gtdbtk']
+    retries:
+        config['retries'].get('run_gtdbtk', 2)
     resources:
-        mem_mb=config['mem_mb']['gtdbtk']
+        # pplacer's footprint scales with the number of bins, and asking for
+        # the worst case up front would pin every sample to the few largest
+        # nodes. Start at the value that suits most samples and escalate on
+        # retry, capped by gtdbtk_max. The .get keeps configs predating
+        # gtdbtk_max working.
+        mem_mb=lambda wildcards, attempt: min(
+            config['mem_mb'].get('gtdbtk_max', config['mem_mb']['gtdbtk']),
+            config['mem_mb']['gtdbtk'] * attempt
+        )
     conda:
         "../env/gtdbtk.yaml"
     log:

@@ -10,6 +10,14 @@ use-conda: true
 conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs
 
 set-resources:
+  # fastp reads every raw FASTQ, so it is the rule most exposed to slow
+  # shared storage. At the 120 min default it was cancelled on a 2.4 GB
+  # saliva library while ~200 jobs were hammering isilon -- 116 min elapsed,
+  # four minutes inside the limit. The work itself is minutes; the variance
+  # is I/O contention, and an explicit adapter panel adds per-read matching
+  # on top. Give it room rather than lose a whole run to one timeout at 98%.
+  fastp:
+    runtime: 360
   host_filter:
     mem_mb: 16000
     runtime: 480
@@ -32,6 +40,8 @@ set-resources:
     runtime: 360        # DIAMOND vs uniref100; usually well under this
   run_gtdbtk:
     runtime: 1440       # classify_wf (pplacer + ANI) can run several hours
+                        # memory comes from config['mem_mb']['gtdbtk'];
+                        # 128 GB OOM-killed 17/341 samples, raised to 300 GB
   make_concoct_coverage_table:
     mem_mb: 64000       # ~7.8 GiB at the 8 GB cap on a 90-BAM reference
     runtime: 720        # concoct_coverage_table.py over ~90 BAMs > 2 h default

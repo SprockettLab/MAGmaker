@@ -293,7 +293,24 @@ mem_mb:
   spades: 256000
   multiqc: 32000
   checkm2: 32000
-  gtdbtk: 128000
+  # GTDB-Tk's memory is dominated by pplacer during classify_wf, which loads
+  # the reference package into RAM. Requirements vary a lot with the number
+  # of bins: on a 341-sample gut cohort, 324 samples finished inside 128 GB
+  # while 17 were OOM-killed, one of them logging three kill events.
+  #
+  # A flat request sized for the worst case is the wrong fix -- mem_mb is a
+  # SLURM reservation, so requesting 300 GB for every sample confines all of
+  # them to the handful of nodes that large and serialises the stage. Instead
+  # `gtdbtk` is the FIRST attempt and `gtdbtk_max` the ceiling: the rule
+  # requests gtdbtk * attempt, capped, so most samples schedule anywhere and
+  # only the heavy ones wait for a big node. Retries come from
+  # retries.run_gtdbtk below.
+  #
+  # If no node can supply the ceiling, pass --scratch_dir to gtdbtk instead:
+  # pplacer then mmaps the reference to disk, needing far less RAM but
+  # running slower.
+  gtdbtk: 128000        # first attempt
+  gtdbtk_max: 320000    # ceiling on retry (2nd attempt asks 256000)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -313,6 +330,10 @@ mem_mb:
 retries:
   run_DAS_Tool: 4
   run_gunc: 4
+  # Escalates memory rather than just re-trying: run_gtdbtk requests
+  # mem_mb.gtdbtk * attempt, capped at mem_mb.gtdbtk_max. Two retries reach
+  # the ceiling, which is enough for every sample seen so far.
+  run_gtdbtk: 2
   # consolidate_DAS_Tool_bins reads run_DAS_Tool's output; on a busy shared
   # filesystem that input can lag past latency-wait. A few retries ride it out.
   consolidate_DAS_Tool_bins: 3
