@@ -104,6 +104,15 @@ rule map_reads_minimap2:
         "output/benchmarks/mapping/minimap2/mapped_reads/{read_sample}_Mapped_To_{contig_sample}_benchmark.txt"
     log:
         "output/logs/mapping/minimap2/mapped_reads/{read_sample}_Mapped_To_{contig_sample}.log"
+    retries:
+        config['retries'].get('map_reads_minimap2', 2)
+    resources:
+        # Measured at 7972 MB against the 8000 MB default on a
+        # 341-sample gut cohort -- 99.6%, the closest call in the
+        # whole pipeline, across 4092 jobs. minimap2's index and
+        # alignment buffers scale with assembly size, so a larger
+        # reference crosses it.
+        mem_mb=mem_escalate('map_reads_minimap2', base_default=12000)
     shell:
         """
         # Map reads against contigs
@@ -129,6 +138,13 @@ rule sort_index_bam:
         "output/benchmarks/mapping/{mapper}/sort_index_bam/{read_sample}_Mapped_To_{contig_sample}.txt"
     log:
         "output/logs/mapping/{mapper}/sort_index_bam/sort_index_bam/{read_sample}_Mapped_To_{contig_sample}.log"
+    retries:
+        config['retries'].get('sort_index_bam', 2)
+    resources:
+        # samtools sort -@ N defaults to ~768 MB per thread, so at 8
+        # threads it sits just under the 8 GB default reservation
+        # before any other overhead. Large BAMs cross it.
+        mem_mb=mem_escalate('sort_index_bam', base_default=12000)
     shell:
         """
         samtools sort -o {output.bam} -@ {threads} {input.aln} 2> {log}

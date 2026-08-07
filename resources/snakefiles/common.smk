@@ -136,6 +136,29 @@ def get_read(sample, seqrun, read):
     return metadata_table.loc[(sample, seqrun), "%s_fp" % read]
 
 
+def mem_escalate(key, base_default=8000, cap_multiple=4):
+    """in : a config['mem_mb'] key, plus fallbacks
+       out: a snakemake resource callable of (wildcards, attempt)
+
+    Returns config['mem_mb'][key] on the first attempt and doubles it on each
+    retry, capped by config['mem_mb'][key + '_max'].
+
+    mem_mb is a scheduler RESERVATION, not a ceiling: a job requesting 300 GB
+    will only run on a node with 300 GB free, however much it actually uses.
+    Sizing every request for the worst-observed case therefore confines the
+    whole rule to the largest nodes and serialises it, to benefit the few
+    samples that need the headroom. Escalating instead keeps the common case
+    schedulable anywhere and pays the queueing cost only where it is earned.
+
+    Rules using this need a `retries:` directive, or `attempt` never exceeds 1
+    and the escalation is inert."""
+    def _resolve(wildcards, attempt):
+        base = config["mem_mb"].get(key, base_default)
+        cap = config["mem_mb"].get("%s_max" % key, base * cap_multiple)
+        return min(cap, base * attempt)
+    return _resolve
+
+
 def seqruns_for(sample):
     """in : sample name
        out: list of that sample's sequencing run names, in index order"""
