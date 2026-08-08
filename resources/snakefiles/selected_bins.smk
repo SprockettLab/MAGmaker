@@ -169,6 +169,29 @@ rule run_DAS_Tool:
             # plumbing) is transient, so fail and let Snakemake retry rather than
             # masking a richly-binnable sample as empty.
             if grep -qE "No bins with bin-score" {log}; then
+                # "No bins with bin-score" is ambiguous. It is the genuine
+                # empty-sample signature, but it is ALSO how the transient SCG
+                # race surfaces: when DIAMOND's single-copy-gene search comes
+                # up empty, DAS_Tool does not abort -- it proceeds to scoring,
+                # every bin scores 0 for want of markers, and the run reports
+                # no bin above the threshold. Treating that as an empty sample
+                # discards a fully binnable one.
+                #
+                # The two are told apart by whether the BACTERIAL SCG set came
+                # back empty. "No SCGs detected for SCG set: archaea" is
+                # unremarkable -- most samples have no archaea -- but an empty
+                # bacterial set alongside real input bins means the search
+                # failed, not that the sample is empty.
+                #
+                # Observed on a 341-sample gut cohort: 87 samples (25%) were
+                # written off as empty this way, discarding 6430 candidate
+                # bins. Their assemblies were not weak; median N50 was 16%
+                # HIGHER than the samples that succeeded.
+                if grep -qE "No SCGs detected for SCG set: bacteria" {log} \
+                   && [ -s "$(echo {input.metabat2} | cut -d' ' -f1)" ]; then
+                    echo "Bacterial SCG set empty despite non-empty input bins: DAS_Tool's SCG search failed rather than the sample being empty. Failing for retry." >> {log}
+                    exit 1
+                fi
                 echo "No bins above score threshold; no MAGs for this sample." >> {log}
                 printf "bin_id\n" > {output.out}
                 exit 0
