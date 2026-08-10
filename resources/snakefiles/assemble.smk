@@ -47,12 +47,16 @@ rule megahit:
 
     """
     input:
-        fastq1=rules.host_filter.output.nonhost_R1,
-        fastq2=rules.host_filter.output.nonhost_R2
+        reads=lambda wildcards: nonhost_reads(wildcards.sample)
     output:
         contigs="output/assemble/megahit/{sample}.contigs.fasta"
     params:
-        temp_dir=directory("output/{sample}_temp/")
+        temp_dir=directory("output/{sample}_temp/"),
+        # MEGAHIT takes -1/-2 for paired input and -r for single-end.
+        read_args=lambda wildcards, input: (
+            "-1 {0} -2 {1}".format(*input.reads) if len(input.reads) == 2
+            else "-r {0}".format(input.reads[0])
+        )
     conda:
         "../env/assemble.yaml"
     threads:
@@ -73,21 +77,58 @@ rule megahit:
           -o {params.temp_dir}/ \
           --memory $(({resources.mem_mb}*1024*1024)) \
           --keep-tmp-files \
-          -1 {input.fastq1} \
-          -2 {input.fastq2} \
+          {params.read_args} \
           2> {log} 1>&2
 
         mv {params.temp_dir}/final.contigs.fa {output.contigs}
         rm -rf {params.temp_dir}
         """
 
+# Fail at load, not at binning. A sample no configured assembler can handle
+# is otherwise trimmed, host filtered and profiled, then quietly dropped
+# before assembly: stage 1 reports success having produced no contigs for
+# it, and the only complaint comes much later from generate_binning_config.
+_unassemblable = [
+    sample for sample in samples
+    if not any(sample in set(samples_for_assembler(assembler))
+               for assembler in config['assemblers'])
+]
+if _unassemblable:
+    _fail(
+        "no configured assembler can assemble: %s\n\n"
+        "Configured assemblers: %s\n\n"
+        "metaSPAdes cannot take a single-end-only library, so single-end\n"
+        "samples need megahit:\n\n"
+        "    assemblers:\n"
+        "      - metaspades\n"
+        "      - megahit\n\n"
+        "Both may be listed. Paired-end samples are then assembled by both\n"
+        "and single-end samples by megahit alone."
+        % (", ".join(_unassemblable), ", ".join(config['assemblers']))
+    )
+
+
+def assembly_reports(template):
+    """in : a path template with {assembler} and {sample}
+       out: one path per assembler for each sample that assembler can run
+
+    A plain assembler x sample cross product would request metaSPAdes
+    contigs for single-end samples, which metaSPAdes cannot produce."""
+    return [template.format(assembler=assembler, sample=sample)
+            for assembler in config['assemblers']
+            for sample in samples_for_assembler(assembler)]
+
+
 rule quast:
     """
     Does an evaluation of assembly quality with Quast
     """
     input:
+        # Its own assembler only. Expanding over every configured assembler
+        # made the quast job for one assembler depend on all the others,
+        # which cannot hold once an assembler skips some samples.
         lambda wildcards: expand("output/assemble/{assembler}/{sample}.contigs.fasta",
-                                 assembler=config['assemblers'],
+                                 assembler=wildcards.assembler,
                                  sample=wildcards.sample)
     output:
         report="output/assemble/{assembler}/quast/{sample}/report.txt",
@@ -112,9 +153,8 @@ rule quast:
 
 rule multiqc_assemble:
     input:
-        lambda wildcards: expand("output/assemble/{assembler}/quast/{sample}/report.txt",
-                                 assembler=config['assemblers'],
-                                 sample=samples)
+        lambda wildcards: assembly_reports(
+            "output/assemble/{assembler}/quast/{sample}/report.txt")
     output:
         "output/assemble/multiqc_assemble/multiqc.html"
     params:
@@ -163,11 +203,8 @@ rule merge_assembly_stats:
     Merges per-sample QUAST report.tsv files into a single project-wide assembly stats table.
     """
     input:
-        lambda wildcards: expand(
-            "output/assemble/{assembler}/quast/{sample}/report.txt",
-            assembler=config['assemblers'],
-            sample=samples
-        )
+        lambda wildcards: assembly_reports(
+            "output/assemble/{assembler}/quast/{sample}/report.txt")
     output:
         "output/assemble/assembly_stats.tsv"
     log:
@@ -198,9 +235,8 @@ rule merge_assembly_stats:
 
 rule multiqc_metaquast:
     input:
-        expand(rules.metaquast.output.report,
-               assembler=config['assemblers'],
-               sample=samples)
+        lambda wildcards: assembly_reports(
+            "output/assemble/{assembler}/metaquast/{sample}/report.html")
     output:
         "output/assemble/multiqc_metaquast/multiqc.html"
     params:

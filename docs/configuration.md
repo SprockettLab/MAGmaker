@@ -250,6 +250,71 @@ fields, duplicate `(Sample, Sequencing_Run)` pairs, and a file that is
 space- rather than tab-separated each produce a specific error naming the
 offending rows, rather than failing later inside the workflow.
 
+### Single-end runs
+
+A run is single-end when `R2_fp` holds the literal `NA`:
+
+```
+Sample   Sequencing_Run   R1_fp                      R2_fp                      Treatment_Group
+John     Run_1            /path/John_R1.fastq.gz     /path/John_R2.fastq.gz     Treatment
+George   Run_1            /path/George_R1.fastq.gz   NA                         Control
+```
+
+Nothing is inferred. The layout is not detected from the filesystem, from
+read headers, or from a missing column, and a blank `R2_fp` is an error
+rather than an implicit single-end declaration. That is deliberate: a
+truncated or half-written sample sheet should fail loudly instead of
+quietly assembling one mate of a paired library. The marker is exact and
+case-sensitive, so `na`, `n/a` and `None` are all still errors.
+
+Layout may vary between samples in one cohort, but not between the runs of
+a single sample. `merge_seqruns` concatenates per read identifier, so a
+sample mixing layouts would produce a reverse file covering only some of
+its runs; this is rejected on load.
+
+Single-end samples differ from paired-end ones in three ways:
+
+| | Paired-end | Single-end |
+|---|---|---|
+| Read identifier | `R1`, `R2` | `SE` |
+| Assemblers | megahit, metaspades | **megahit only** |
+| Trimmer | fastp or cutadapt | **fastp only** |
+
+metaSPAdes rejects a single-end-only library outright, so single-end
+samples are dropped from the metaSPAdes target list and assembled by
+MEGAHIT. With `assemblers: [metaspades, megahit]` a mixed cohort is
+handled correctly: paired-end samples are assembled by both, single-end
+samples by MEGAHIT alone, and `generate_binning_config` points each sample
+at an assembly that exists.
+
+With `assemblers: [metaspades]` alone, a single-end sample has no
+assembler at all, and the run stops immediately with an error naming it.
+The check is deliberately at load time. Without it such a sample is
+trimmed, host filtered and profiled and only then dropped, so stage 1
+reports success having produced no contigs for it and the first complaint
+comes much later from `generate_binning_config`.
+
+The cutadapt parameters are paired-end specific (`-U` trims the reverse
+read), so `trimmer: cutadapt` is refused when the cohort contains
+single-end samples.
+
+fastp runs with `params.fastp.extra` minus `--detect_adapter_for_pe`,
+which applies only to paired input; fastp detects adapter sequence for
+single-end reads by default. Set `params.fastp.extra_se` to override that
+derived value.
+
+Single-end outputs never collide with paired-end ones: trimmed reads and
+their fastp reports go to `output/qc/fastp/se/`, host-filtered reads to
+`output/qc/host_filter/nonhost/{sample}.SE.fastq.gz`, and the host BAM to
+`output/qc/host_filter/host_se/`. Paired-end paths are unchanged, so
+adding single-end samples to an existing project does not invalidate work
+already done.
+
+`resources/test/metadata_single_end.txt` and
+`resources/test/metadata_mixed_layout.txt` are runnable examples against
+the bundled test reads. The loader behaviour is covered by
+`python3 resources/test/test_metadata_layout.py`.
+
 ### Migrating from samples.txt + units.txt
 
 `samples.txt` is no longer used -- its only role was listing sample names,

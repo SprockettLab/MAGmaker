@@ -41,6 +41,11 @@
 # Required columns: Sample, Sequencing_Run, R1_fp, R2_fp
 # Any further columns (treatment, timepoint, subject...) are carried through
 # and readable in rules via metadata_table. See docs/configuration.md.
+#
+# Single-end runs put the literal NA in R2_fp. Nothing is auto-detected: a
+# blank R2_fp is an error, so an incomplete sheet cannot be mistaken for
+# single-end data. Single-end samples are assembled by MEGAHIT only,
+# because metaSPAdes rejects a single-end-only library.
 metadata: resources/config/metadata.txt
 
 # Which reads to map to; also used as a filename wildcard. The metadata
@@ -123,6 +128,13 @@ params:
     #
     # Set to "" to restore fastp's stock behaviour.
     extra: "--detect_adapter_for_pe --adapter_fasta resources/adapters/illumina_adapters.fa --trim_poly_g --trim_poly_x"
+
+    # Single-end samples (R2_fp = NA in the metadata table) use `extra`
+    # with --detect_adapter_for_pe removed, since that flag applies only to
+    # paired input and fastp already detects adapter sequence for
+    # single-end reads by default. Set extra_se here to override that
+    # derived value with something explicit.
+    # extra_se: "--adapter_fasta resources/adapters/illumina_adapters.fa --trim_poly_g --trim_poly_x"
 
   cutadapt:
     # Alternative to fastp; selected with `trimmer: cutadapt` above.

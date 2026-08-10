@@ -6,11 +6,28 @@ host_base = join(config['host_filter']['db_dir'],
 trimmer = config['trimmer']
 
 
+# Single-end trimmer output lives in its own subdirectory. The per-read
+# FASTQ names could not collide (SE versus R1/R2), but the fastp JSON and
+# HTML reports carry no read identifier, so a single-end rule writing beside
+# the paired one would make two rules claim the same path and Snakemake
+# would refuse the DAG as ambiguous. Keeping paired paths exactly where they
+# were also means existing runs are not invalidated by this change.
+SE_SUBDIR = "se/"
+
+
+def trimmed_read(sample, seqrun, read):
+    """in : sample, sequencing run, read id
+       out: path to that run's trimmed FASTQ"""
+    return "output/qc/{t}/{d}{s}.{u}.{r}.fastq.gz".format(
+        t=trimmer,
+        d=SE_SUBDIR if read == SINGLE_END_READ else "",
+        s=sample, u=seqrun, r=read
+    )
+
+
 def trimmer_output(wildcards):
     """Trimmed reads path for the configured trimmer."""
-    return "output/qc/{t}/{s}.{u}.{r}.fastq.gz".format(
-        t=trimmer, s=wildcards.sample, u=wildcards.seqrun, r=wildcards.read
-    )
+    return trimmed_read(wildcards.sample, wildcards.seqrun, wildcards.read)
 
 
 def merged_reads(sample, read):
@@ -21,21 +38,32 @@ def merged_reads(sample, read):
     linked. Only multi-run samples pay the cat."""
     runs = seqruns_for(sample)
     if len(runs) == 1:
-        return "output/qc/{t}/{s}.{u}.{r}.fastq.gz".format(
-            t=trimmer, s=sample, u=runs[0], r=read
-        )
+        return trimmed_read(sample, runs[0], read)
     return "output/qc/merge_seqruns/{s}.combined.{r}.fastq.gz".format(
         s=sample, r=read
+    )
+
+
+if trimmer == 'cutadapt' and any(is_single_end(s) for s in samples):
+    _fail(
+        "trimmer: cutadapt does not support the single-end samples in this\n"
+        "metadata file. The cutadapt parameters are paired-end specific\n"
+        "(-U trims the reverse read), so a single-end run would fail or\n"
+        "trim the wrong thing.\n\n"
+        "Set  trimmer: fastp  to process single-end data."
     )
 
 
 def trimmer_qc_logs(metadata_table):
     """Trimmer-specific QC files collected by MultiQC."""
     if trimmer == 'fastp':
-        return expand(
-            "output/qc/fastp/{u.Index[0]}.{u.Index[1]}.fastp.json",
-            u=metadata_table.itertuples()
-        )
+        return [
+            "output/qc/fastp/{d}{s}.{u}.fastp.json".format(
+                d=SE_SUBDIR if row.Layout == "SINGLE" else "",
+                s=row.Index[0], u=row.Index[1]
+            )
+            for row in metadata_table.itertuples()
+        ]
     else:
         return expand(
             "output/logs/qc/cutadapt/{u.Index[0]}.{u.Index[1]}.txt",
@@ -95,6 +123,47 @@ rule fastp_pe:
         fastp \
             --in1 {input.R1} --in2 {input.R2} \
             --out1 {output.R1} --out2 {output.R2} \
+            --json {output.json} --html {output.html} \
+            --thread {threads} \
+            {params.extra} \
+            2> {log}
+        """
+
+
+rule fastp_se:
+    input:
+        SE=lambda wildcards: get_read(wildcards.sample, wildcards.seqrun,
+                                      SINGLE_END_READ)
+    output:
+        SE=temp("output/qc/fastp/se/{sample}.{seqrun}.SE.fastq.gz"),
+        json="output/qc/fastp/se/{sample}.{seqrun}.fastp.json",
+        html="output/qc/fastp/se/{sample}.{seqrun}.fastp.html"
+    params:
+        # params.fastp.extra is written for paired input, where
+        # --detect_adapter_for_pe is needed because fastp infers adapters
+        # from read overlap rather than detecting the sequence. For
+        # single-end input fastp detects adapter sequence by default and
+        # the flag is meaningless, so it is stripped while the adapter
+        # panel and homopolymer trimming are kept. A single-end specific
+        # extra can be set in config as params.fastp.extra_se.
+        extra=config['params']['fastp'].get(
+            'extra_se',
+            config['params']['fastp']['extra'].replace(
+                '--detect_adapter_for_pe', '').strip()
+        )
+    threads:
+        config['threads']['fastp']
+    conda:
+        "../env/fastp.yaml"
+    log:
+        "output/logs/qc/fastp/se/{sample}.{seqrun}.log"
+    benchmark:
+        "output/benchmarks/qc/fastp/se/{sample}.{seqrun}_benchmark.txt"
+    shell:
+        """
+        fastp \
+            --in1 {input.SE} \
+            --out1 {output.SE} \
             --json {output.json} --html {output.html} \
             --thread {threads} \
             {params.extra} \
@@ -162,13 +231,10 @@ rule fastqc_post_trim:
 
 rule merge_seqruns:
     input:
-        lambda wildcards: expand(
-            "output/qc/{t}/{s}.{u}.{r}.fastq.gz",
-            t=trimmer,
-            s=wildcards.sample,
-            u=seqruns_for(wildcards.sample),
-            r=wildcards.read
-        )
+        lambda wildcards: [
+            trimmed_read(wildcards.sample, seqrun, wildcards.read)
+            for seqrun in seqruns_for(wildcards.sample)
+        ]
     output:
         temp("output/qc/merge_seqruns/{sample}.combined.{read}.fastq.gz")
     benchmark:
@@ -267,6 +333,42 @@ rule host_filter:
         """
 
 
+rule host_filter_se:
+    """
+    Host filtering for single-end samples.
+
+    Separate from host_filter rather than a branch inside it because the
+    two produce different numbers of output files, which a single rule
+    cannot declare. The host BAM goes to its own directory so the two rules
+    never match the same path.
+    """
+    input:
+        fastq=lambda wildcards: merged_reads(wildcards.sample,
+                                             SINGLE_END_READ),
+        db=rules.host_bowtie2_build.output
+    output:
+        nonhost_SE="output/qc/host_filter/nonhost/{sample}.SE.fastq.gz",
+        host="output/qc/host_filter/host_se/{sample}.bam",
+    params:
+        ref=host_base
+    conda:
+        "../env/qc.yaml"
+    threads:
+        config['threads']['host_filter']
+    log:
+        "output/logs/qc/host_filter/{sample}.se.log"
+    benchmark:
+        "output/benchmarks/qc/host_filter/{sample}.se_benchmark.txt"
+    shell:
+        """
+        bowtie2 -p {threads} -x {params.ref} \
+          -U {input.fastq} \
+          --un-gz {output.nonhost_SE} \
+          --no-unal \
+          2> {log} | samtools view -bS - > {output.host}
+        """
+
+
 rule fastqc_post_host:
     input:
         "output/qc/host_filter/nonhost/{sample}.{read}.fastq.gz"
@@ -293,16 +395,46 @@ rule fastqc_post_host:
         """
 
 
+def fastqc_run_targets(stage):
+    """in : 'pre_trim' or 'post_trim'
+       out: per-run FastQC targets, one per read the sample actually has
+
+    Iterating reads_for(sample) rather than the global `reads` is what keeps
+    an R2 report from being requested for a single-end sample."""
+    return [
+        "output/qc/fastqc_{stage}/{s}.{u}.{r}.html".format(
+            stage=stage, s=row.Index[0], u=row.Index[1], r=read)
+        for row in metadata_table.itertuples()
+        for read in reads_for(row.Index[0])
+    ]
+
+
+def fastqc_host_targets():
+    """Per-sample FastQC targets after host filtering."""
+    return [
+        "output/qc/fastqc_post_host/{s}.{r}.html".format(s=sample, r=read)
+        for sample in samples
+        for read in reads_for(sample)
+    ]
+
+
+def host_filter_logs():
+    """Host filter logs; the two rules write to different names."""
+    return [
+        "output/logs/qc/host_filter/{s}.se.log".format(s=sample)
+        if is_single_end(sample)
+        else "output/logs/qc/host_filter/{s}.log".format(s=sample)
+        for sample in samples
+    ]
+
+
 rule multiqc:
     input:
-        expand("output/qc/fastqc_pre_trim/{seqruns.Index[0]}.{seqruns.Index[1]}.{read}.html",
-               seqruns=metadata_table.itertuples(), read=reads),
+        lambda wildcards: fastqc_run_targets('pre_trim'),
         lambda wildcards: trimmer_qc_logs(metadata_table),
-        expand("output/qc/fastqc_post_trim/{seqruns.Index[0]}.{seqruns.Index[1]}.{read}.html",
-               seqruns=metadata_table.itertuples(), read=reads),
-        expand("output/qc/fastqc_post_host/{seqruns.Index[0]}.{read}.html",
-               seqruns=metadata_table.itertuples(), read=reads),
-        lambda wildcards: expand(rules.host_filter.log, sample=samples)
+        lambda wildcards: fastqc_run_targets('post_trim'),
+        lambda wildcards: fastqc_host_targets(),
+        lambda wildcards: host_filter_logs()
     output:
         "output/qc/multiqc/multiqc.html"
     params:
