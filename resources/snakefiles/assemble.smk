@@ -84,6 +84,30 @@ rule megahit:
         rm -rf {params.temp_dir}
         """
 
+# Fail at load, not at binning. A sample no configured assembler can handle
+# is otherwise trimmed, host filtered and profiled, then quietly dropped
+# before assembly: stage 1 reports success having produced no contigs for
+# it, and the only complaint comes much later from generate_binning_config.
+_unassemblable = [
+    sample for sample in samples
+    if not any(sample in set(samples_for_assembler(assembler))
+               for assembler in config['assemblers'])
+]
+if _unassemblable:
+    _fail(
+        "no configured assembler can assemble: %s\n\n"
+        "Configured assemblers: %s\n\n"
+        "metaSPAdes cannot take a single-end-only library, so single-end\n"
+        "samples need megahit:\n\n"
+        "    assemblers:\n"
+        "      - metaspades\n"
+        "      - megahit\n\n"
+        "Both may be listed. Paired-end samples are then assembled by both\n"
+        "and single-end samples by megahit alone."
+        % (", ".join(_unassemblable), ", ".join(config['assemblers']))
+    )
+
+
 def assembly_reports(template):
     """in : a path template with {assembler} and {sample}
        out: one path per assembler for each sample that assembler can run

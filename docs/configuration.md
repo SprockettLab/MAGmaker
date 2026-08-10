@@ -283,9 +283,16 @@ Single-end samples differ from paired-end ones in three ways:
 metaSPAdes rejects a single-end-only library outright, so single-end
 samples are dropped from the metaSPAdes target list and assembled by
 MEGAHIT. With `assemblers: [metaspades, megahit]` a mixed cohort is
-handled correctly, and `generate_binning_config` points each sample at an
-assembly that exists. With `assemblers: [metaspades]` alone, a single-end
-sample has no assembler and the run stops with an error naming it.
+handled correctly: paired-end samples are assembled by both, single-end
+samples by MEGAHIT alone, and `generate_binning_config` points each sample
+at an assembly that exists.
+
+With `assemblers: [metaspades]` alone, a single-end sample has no
+assembler at all, and the run stops immediately with an error naming it.
+The check is deliberately at load time. Without it such a sample is
+trimmed, host filtered and profiled and only then dropped, so stage 1
+reports success having produced no contigs for it and the first complaint
+comes much later from `generate_binning_config`.
 
 The cutadapt parameters are paired-end specific (`-U` trims the reverse
 read), so `trimmer: cutadapt` is refused when the cohort contains
