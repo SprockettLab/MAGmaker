@@ -168,8 +168,8 @@ def prototype_selection_destructive_maxdist(dm, num_prototypes, seedset=None):
 
 rule sourmash_sketch_reads:
     input:
-        fastq1=rules.host_filter.output.nonhost_R1,
-        fastq2=rules.host_filter.output.nonhost_R2
+        # --merge sketches whatever files are given, so one or two both work.
+        reads=lambda wildcards: nonhost_reads(wildcards.sample)
     output:
         "output/prototype_selection/sourmash_sketch_reads/{sample}.sig"
     log:
@@ -383,10 +383,24 @@ rule generate_binning_config:
                 f"Adjust params.prototypes.n in config.yaml."
             )
 
-        assembler = params.assemblers[0]
+        # The first configured assembler that can actually assemble each
+        # sample. metaSPAdes cannot take a single-end-only library, so with
+        # `assemblers: [metaspades, megahit]` a single-end sample must be
+        # binned from its MEGAHIT assembly rather than from a contigs file
+        # that will never exist.
+        def assembler_for(sample):
+            for candidate in params.assemblers:
+                if sample in set(samples_for_assembler(candidate)):
+                    return candidate
+            raise ValueError(
+                "No configured assembler can assemble %s. Single-end "
+                "samples need megahit in `assemblers`." % sample
+            )
+
         rows = []
         for sample in all_samples:
             is_prototype = sample in prototypes
+            assembler = assembler_for(sample)
             rows.append({
                 'Sample': sample,
                 'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",

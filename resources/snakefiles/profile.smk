@@ -3,14 +3,17 @@ rule taxonomy_kraken:
     Runs Kraken with Bracken to construct taxonomic profiles.
     """
     input:
-        fastq1=rules.host_filter.output.nonhost_R1,
-        fastq2=rules.host_filter.output.nonhost_R2
+        reads=lambda wildcards: nonhost_reads(wildcards.sample)
     output:
         report = "output/profile/kraken2/{sample}.report.txt"
     params:
         db = config['params']['kraken2']['db'],
         levels = config['params']['kraken2']['levels'],
-        bracken_db = config['params']['kraken2']['bracken-db']
+        bracken_db = config['params']['kraken2']['bracken-db'],
+        # --paired describes the input, so it must not be passed when a
+        # single FASTQ is given; kraken2 errors out rather than ignoring it.
+        paired = lambda wildcards, input: (
+            "--paired" if len(input.reads) == 2 else "")
     conda:
         "../env/profile.yaml"
     threads:
@@ -26,9 +29,9 @@ rule taxonomy_kraken:
           stem=${{stem%.report.txt}}
 
           # run Kraken to align reads against reference genomes
-          kraken2 {input.fastq1} {input.fastq2} \
+          kraken2 {input.reads} \
             --db {params.db} \
-            --paired \
+            {params.paired} \
             --gzip-compressed \
             --only-classified-output \
             --threads {threads} \
@@ -102,8 +105,7 @@ rule metaphlan:
     Performs taxonomic profiling using MetaPhlAn4.
     """
     input:
-        fastq1=rules.host_filter.output.nonhost_R1,
-        fastq2=rules.host_filter.output.nonhost_R2,
+        reads=lambda wildcards: nonhost_reads(wildcards.sample),
         db_path=rules.download_metaphlan_db.output
     output:
         bt2="output/profile/metaphlan/bowtie2s/{sample}.bowtie2.bz2",
@@ -123,7 +125,9 @@ rule metaphlan:
         config['threads']['metaphlan']
     params:
         db_name=config['params']['metaphlan']['db_name'],
-        other=config['params']['metaphlan']['other']
+        other=config['params']['metaphlan']['other'],
+        # MetaPhlAn takes its inputs as one comma-separated argument.
+        read_arg=lambda wildcards, input: ",".join(input.reads)
     benchmark:
         "output/benchmarks/profile/metaphlan/{sample}_benchmark.txt"
     log:
@@ -132,7 +136,7 @@ rule metaphlan:
         """
         mkdir -p output/profile/metaphlan/bowtie2s output/profile/metaphlan/sams
 
-        metaphlan {input.fastq1},{input.fastq2} \
+        metaphlan {params.read_arg} \
         --input_type fastq \
         --nproc {threads} \
         --bowtie2db {input.db_path} \

@@ -10,16 +10,43 @@
 #   reads            read identifiers from config, normally ['R1', 'R2']
 #   get_read()       (sample, seqrun, read) -> FASTQ path
 #   seqruns_for()    sample -> list of its sequencing runs
+#   is_single_end()  sample -> True for a single-end sample
+#   reads_for()      sample -> ['R1', 'R2'] or ['SE']
+#   nonhost_reads()  sample -> host-filtered FASTQ path(s)
+#   samples_for_assembler()  assembler -> samples it can assemble
 #
 # Columns beyond the four required ones are carried through untouched and can
 # be read from metadata_table inside a rule, so study covariates live
 # alongside the file paths instead of in a separate sheet.
+#
+# SINGLE-END INPUT
+#
+# A row declares single-end sequencing by putting the literal NA in R2_fp.
+# Nothing is inferred: not from the filesystem, not from read headers, not
+# from a missing column. An empty, absent, "nan" or "None" R2_fp stays a
+# hard error exactly as before, so an incomplete or half-written sample
+# sheet still fails loudly instead of quietly assembling single-end.
+#
+# Single-end samples carry the read identifier 'SE' instead of 'R1'/'R2'.
+# Because every QC rule is already parameterized by read identifier, that
+# one substitution carries most of the way through the pipeline, and it
+# keeps single-end outputs from ever colliding with paired-end ones.
 # =============================================================================
 
 import sys
 import pandas as pd
 
 REQUIRED_COLUMNS = ["Sample", "Sequencing_Run", "R1_fp", "R2_fp"]
+
+# The literal that declares single-end input. Case-sensitive and exact:
+# "na", "n/a" and "None" are all still errors.
+SINGLE_END_MARKER = "NA"
+
+# Read identifier used for single-end samples throughout the pipeline.
+SINGLE_END_READ = "SE"
+
+# Values that mean "this field was left blank", and are always an error.
+BLANK_VALUES = ["", "nan", "NaN", "None"]
 
 
 def _fail(message):
@@ -55,7 +82,13 @@ def load_metadata(config):
     metadata_fp = config["metadata"]
 
     try:
-        table = pd.read_csv(metadata_fp, sep="\t", header=0, dtype=str)
+        # keep_default_na=False is load-bearing: pandas otherwise converts the
+        # literal NA to NaN, which is exactly the value used to declare
+        # single-end input, and it would arrive here indistinguishable from a
+        # genuinely empty cell. It also stops NA in any carried-through
+        # covariate column from being silently rewritten.
+        table = pd.read_csv(metadata_fp, sep="\t", header=0, dtype=str,
+                            keep_default_na=False)
     except FileNotFoundError:
         _fail("metadata file not found: %s" % metadata_fp)
     except Exception as exc:
@@ -88,16 +121,53 @@ def load_metadata(config):
     for column in REQUIRED_COLUMNS:
         table[column] = table[column].fillna("").astype(str).str.strip()
 
+    # R2_fp is checked separately below, because the literal NA is meaningful
+    # there and an error everywhere else.
+    always_required = [c for c in REQUIRED_COLUMNS if c != "R2_fp"]
+
     blank = table[
-        table[REQUIRED_COLUMNS].isin(["", "nan", "NaN", "None", "NA"]).any(axis=1)
+        table[always_required].isin(BLANK_VALUES + [SINGLE_END_MARKER]).any(axis=1)
     ]
     if not blank.empty:
         # +2 converts a 0-based row index to the line number in the file.
         lines = ", ".join(str(i + 2) for i in blank.index)
         _fail(
             "metadata file %s has empty required fields on line(s): %s\n"
-            "Every row needs Sample, Sequencing_Run, R1_fp and R2_fp."
+            "Every row needs Sample, Sequencing_Run and R1_fp."
             % (metadata_fp, lines)
+        )
+
+    # A blank R2_fp is still an error. Only the exact literal NA declares
+    # single-end, so a truncated sheet cannot silently downgrade a paired
+    # library to single-end and assemble half the data.
+    blank_r2 = table[table["R2_fp"].isin(BLANK_VALUES)]
+    if not blank_r2.empty:
+        lines = ", ".join(str(i + 2) for i in blank_r2.index)
+        _fail(
+            "metadata file %s has a blank R2_fp on line(s): %s\n\n"
+            "R2_fp is never optional. Give the path to the reverse reads,\n"
+            "or write the literal\n\n"
+            "    NA\n\n"
+            "to declare that the run is single-end. Declaring it explicitly\n"
+            "is required so that an incomplete sample sheet cannot be\n"
+            "mistaken for single-end data." % (metadata_fp, lines)
+        )
+
+    table["Layout"] = table["R2_fp"].apply(
+        lambda v: "SINGLE" if v == SINGLE_END_MARKER else "PAIRED"
+    )
+
+    # merge_seqruns concatenates per read identifier, so a sample whose runs
+    # disagree about layout would produce a reverse file covering only some
+    # of its runs. Caught here rather than as a short R2 much later.
+    mixed = (table.groupby("Sample")["Layout"].nunique() > 1)
+    if mixed.any():
+        names = ", ".join(sorted(mixed[mixed].index))
+        _fail(
+            "metadata file %s mixes single-end and paired-end runs within\n"
+            "the same sample: %s\n\n"
+            "Every sequencing run of one sample must have the same layout."
+            % (metadata_fp, names)
         )
 
     # A repeated (Sample, Sequencing_Run) makes the index ambiguous; caught
@@ -126,14 +196,65 @@ metadata_table, samples = load_metadata(config)
 seqruns = metadata_table.index
 reads = config["reads"]
 
+# sample -> "SINGLE" or "PAIRED". Validated in load_metadata to be constant
+# within a sample, so the first run of each is representative.
+layout_index = (metadata_table.reset_index()
+                .groupby("Sample")["Layout"].first().to_dict())
+
 
 def get_read(sample, seqrun, read):
-    """in : sample name, sequencing run name, read id ('R1' or 'R2')
+    """in : sample name, sequencing run name, read id ('R1', 'R2' or 'SE')
        out: path to that FASTQ
 
     `read` is the bare identifier so it can double as a filename wildcard;
-    the metadata column it maps to is <read>_fp."""
-    return metadata_table.loc[(sample, seqrun), "%s_fp" % read]
+    the metadata column it maps to is <read>_fp. 'SE' has no column of its
+    own -- a single-end run keeps its only FASTQ in R1_fp -- so it reads
+    R1_fp while carrying a distinct identifier through output filenames."""
+    column = "R1_fp" if read == SINGLE_END_READ else "%s_fp" % read
+    return metadata_table.loc[(sample, seqrun), column]
+
+
+def is_single_end(sample):
+    """in : sample name
+       out: True if the sample was sequenced single-end
+
+    Layout is validated to be consistent across a sample's runs, so the
+    first run answers for all of them."""
+    return layout_index[sample] == "SINGLE"
+
+
+def reads_for(sample):
+    """in : sample name
+       out: ['SE'] for single-end, otherwise the configured read ids
+
+    The list every per-read expansion should iterate, in place of the
+    global `reads`, so single-end samples never have an R2 target."""
+    return [SINGLE_END_READ] if is_single_end(sample) else reads
+
+
+def nonhost_reads(sample):
+    """in : sample name
+       out: list of host-filtered FASTQ paths, one entry or two
+
+    Rules take this instead of referring to host_filter's outputs directly.
+    The paired and single-end host filters are separate rules with separate
+    outputs, so a fixed `rules.host_filter.output.nonhost_R2` cannot serve
+    both."""
+    return expand("output/qc/host_filter/nonhost/{sample}.{read}.fastq.gz",
+                  sample=sample, read=reads_for(sample))
+
+
+def samples_for_assembler(assembler):
+    """in : assembler name
+       out: the samples that assembler can run on
+
+    metaSPAdes rejects a single-end-only library outright, so single-end
+    samples are assembled by MEGAHIT alone. Filtering the target list keeps
+    that a planning decision rather than a run-time crash partway through a
+    long job."""
+    if assembler == "metaspades":
+        return [s for s in samples if not is_single_end(s)]
+    return list(samples)
 
 
 def mem_escalate(key, base_default=8000, cap_multiple=4):
