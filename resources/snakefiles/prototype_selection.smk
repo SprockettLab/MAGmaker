@@ -184,11 +184,15 @@ rule sourmash_sketch_reads:
         extra = config['params']['sourmash']['extra']
     shell:
         """
+        # --merge takes the NAME for the merged signature, not a flag. With
+        # no name given it consumed the first input path as the name, so a
+        # paired sample sketched R2 alone and a single-end sample was left
+        # with no inputs at all ("no input filenames provided").
         sourmash sketch dna \
         -p k={params.k},scaled={params.scaled}  \
         {params.extra} \
         -o {output} \
-        --merge \
+        --merge {wildcards.sample} \
         {input} 2> {log} 1>&2
         """
 
