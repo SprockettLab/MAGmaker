@@ -45,6 +45,16 @@ set-resources:
   make_concoct_coverage_table:
     mem_mb: 64000       # ~7.8 GiB at the 8 GB cap on a 90-BAM reference
     runtime: 720        # concoct_coverage_table.py over ~90 BAMs > 2 h default
+  make_metabat2_coverage_table:
+    mem_mb: 64000       # jgi_summarize_bam_contig_depths holds every contig's
+                        # depth in memory across all BAMs -- it prints "all
+                        # depths will be in memory" and offers --checkpoint as
+                        # the alternative. At the 8 GB default it was OOM-killed
+                        # partway through the BAM list on an 89-sample vervet
+                        # cohort (180,875 contigs x 14 BAMs), dying silently
+                        # mid-read with no error line, which makes the cause
+                        # hard to see. Matches its concoct counterpart above.
+    runtime: 720
   run_DAS_Tool:
     mem_mb: 32000       # DIAMOND SCG search OOMs at the 8 GB default (bacteria
     runtime: 240        # set fails, archaea survives); matches run_checkm2's
