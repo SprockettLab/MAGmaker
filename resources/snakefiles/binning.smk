@@ -145,12 +145,26 @@ rule run_maxbin2:
         """
             mkdir -p {output.bins}
 
-            run_MaxBin.pl -thread {threads} -prob_threshold {params.prob} \
+            # MaxBin2 exits non-zero when an assembly carries too few
+            # single-copy marker genes to seed its EM, reporting "the medium of
+            # marker gene number <= 1". That is a property of the sample rather
+            # than a failure: host-dominated libraries reach it routinely, and
+            # metabat2 and concoct bin the same assembly without complaint.
+            # DAS_Tool needs only one bin set, so the sample is left with no
+            # maxbin2 bins instead of stopping the workflow. Every other
+            # non-zero exit is still a real error.
+            if ! run_MaxBin.pl -thread {threads} -prob_threshold {params.prob} \
             -min_contig_length {params.min_contig_length} {params.extra} \
             -contig {input.contigs} \
             -abund_list {input.abund_list} \
             -out {params.basename} \
-            2> {log} 1>&2
+            2> {log} 1>&2; then
+                if grep -q "cannot be binned" {log}; then
+                    echo "MaxBin2 found too few marker genes to bin this sample; continuing with no maxbin2 bins." >> {log}
+                else
+                    exit 1
+                fi
+            fi
         """
 
 rule cut_up_fasta:
