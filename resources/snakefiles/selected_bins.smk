@@ -1,3 +1,4 @@
+import os
 from os.path import basename, dirname, join
 from shutil import copyfile
 from glob import glob
@@ -115,7 +116,23 @@ rule run_DAS_Tool:
         out="output/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}_DASTool_summary.tsv"
     params:
         basename = "output/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}",
-        search_engine = config['params']['das_tool']['search_engine']
+        search_engine = config['params']['das_tool']['search_engine'],
+        # Only bin sets that actually contain bins reach DAS_Tool. A binner may
+        # legitimately decline a sample -- MaxBin2 stops when an assembly has
+        # too few single-copy marker genes to seed its EM -- and passing it an
+        # empty bin set aborts the run for every other binner too. Filtering
+        # here means one binner declining costs that binner's contribution
+        # rather than the whole sample.
+        bin_sets = lambda wildcards, input: ",".join(
+            path for path, label in zip(
+                [input.metabat2[0], input.maxbin2[0], input.concoct[0]],
+                ["metabat2", "maxbin2", "concoct"])
+            if os.path.getsize(path) > 0),
+        bin_labels = lambda wildcards, input: ",".join(
+            label for path, label in zip(
+                [input.metabat2[0], input.maxbin2[0], input.concoct[0]],
+                ["metabat2", "maxbin2", "concoct"])
+            if os.path.getsize(path) > 0)
     conda:
         "../env/selected_bins.yaml"
     threads:
@@ -140,12 +157,21 @@ rule run_DAS_Tool:
         # outputs from a failed attempt are cleared first so each retry is clean.
         """
             rm -rf {params.basename}_* {params.basename}.* 2> /dev/null || true
+
+            # Every binner declined this sample. Nothing to reconcile, so
+            # record it as empty rather than handing DAS_Tool no input.
+            if [ -z "{params.bin_sets}" ]; then
+                echo "No binner produced bins for this sample; no MAGs." >> {log}
+                printf "bin_id\n" > {output.out}
+                exit 0
+            fi
+
             set +e
             DAS_Tool \
-            --bins {input.metabat2},{input.maxbin2},{input.concoct} \
+            --bins {params.bin_sets} \
             --contigs {input.contigs} \
             --outputbasename {params.basename} \
-            --labels metabat2,maxbin2,concoct \
+            --labels {params.bin_labels} \
             --write_bins \
             --write_bin_evals \
             --threads {threads} \
