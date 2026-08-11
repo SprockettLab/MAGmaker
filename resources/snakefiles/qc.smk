@@ -25,6 +25,18 @@ def trimmed_read(sample, seqrun, read):
     )
 
 
+def fastp_report(sample, seqrun):
+    """in : sample and sequencing run
+       out: path to that run's fastp JSON
+
+    Single-end reports live in the se/ subdirectory alongside the reads,
+    so anything reading them has to ask rather than assume. Hardcoding the
+    paired-end path made prototype_selection fail on every single-end
+    sample with a FileNotFoundError."""
+    return "output/qc/fastp/{d}{s}.{u}.fastp.json".format(
+        d=SE_SUBDIR if is_single_end(sample) else "", s=sample, u=seqrun)
+
+
 def trimmer_output(wildcards):
     """Trimmed reads path for the configured trimmer."""
     return trimmed_read(wildcards.sample, wildcards.seqrun, wildcards.read)
@@ -57,13 +69,8 @@ if trimmer == 'cutadapt' and any(is_single_end(s) for s in samples):
 def trimmer_qc_logs(metadata_table):
     """Trimmer-specific QC files collected by MultiQC."""
     if trimmer == 'fastp':
-        return [
-            "output/qc/fastp/{d}{s}.{u}.fastp.json".format(
-                d=SE_SUBDIR if row.Layout == "SINGLE" else "",
-                s=row.Index[0], u=row.Index[1]
-            )
-            for row in metadata_table.itertuples()
-        ]
+        return [fastp_report(row.Index[0], row.Index[1])
+                for row in metadata_table.itertuples()]
     else:
         return expand(
             "output/logs/qc/cutadapt/{u.Index[0]}.{u.Index[1]}.txt",

@@ -266,7 +266,9 @@ rule prototype_selection:
             # be hardcoded, since fastp writes one JSON per {sample}.{seqrun}.
             seqs = 0
             for seqrun in seqruns_for(sample):
-                fastp_json = f"output/qc/fastp/{sample}.{seqrun}.fastp.json"
+                # Ask for the path rather than assuming it: single-end
+                # reports live in a subdirectory.
+                fastp_json = fastp_report(sample, seqrun)
                 with open(fastp_json) as jf:
                     summary = json.load(jf)['summary']
                     seqs += summary['after_filtering']['total_reads']
