@@ -149,7 +149,7 @@ rule run_maxbin2:
             -min_contig_length {params.min_contig_length} {params.extra} \
             -contig {input.contigs} \
             -abund_list {input.abund_list} \
-            -out {params.basename}
+            -out {params.basename} \
             2> {log} 1>&2
         """
 
@@ -234,7 +234,7 @@ rule run_concoct:
             concoct --threads {threads} -l {params.min_contig_length} \
             --composition_file {input.contigs_10K} \
             --coverage_file {input.coverage_table} \
-            -b {params.bins}
+            -b {params.bins} \
             2> {log} 1>&2
 
             mv output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}/{wildcards.contig_sample}_bins_clustering_gt{params.min_contig_length}.csv output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}/{wildcards.contig_sample}_bins_clustering.csv
