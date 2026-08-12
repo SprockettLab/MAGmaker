@@ -99,7 +99,16 @@ rule fastqc_pre_trim:
         OUTDIR=$(dirname {output.html})
         mkdir -p $OUTDIR
         fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
-        STEM=$(basename {input} .fastq.gz)
+        # fastqc names its output after the input minus a recognised
+        # extension, so the stem has to be derived the same way rather
+        # than by stripping one hardcoded suffix. basename only strips a
+        # suffix that matches: given a plain .fastq it left .fastq.gz
+        # unstripped, the mv below looked for a file that never existed,
+        # and the rule failed after fastqc had already succeeded.
+        STEM=$(basename {input})
+        STEM=${{STEM%.gz}}
+        STEM=${{STEM%.fastq}}
+        STEM=${{STEM%.fq}}
         mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
         SRC_ZIP="$OUTDIR/${{STEM}}_fastqc.zip"
         [ "$SRC_ZIP" = "{output.zip}" ] || mv "$SRC_ZIP" "{output.zip}"
@@ -229,7 +238,16 @@ rule fastqc_post_trim:
         OUTDIR=$(dirname {output.html})
         mkdir -p $OUTDIR
         fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
-        STEM=$(basename {input} .fastq.gz)
+        # fastqc names its output after the input minus a recognised
+        # extension, so the stem has to be derived the same way rather
+        # than by stripping one hardcoded suffix. basename only strips a
+        # suffix that matches: given a plain .fastq it left .fastq.gz
+        # unstripped, the mv below looked for a file that never existed,
+        # and the rule failed after fastqc had already succeeded.
+        STEM=$(basename {input})
+        STEM=${{STEM%.gz}}
+        STEM=${{STEM%.fastq}}
+        STEM=${{STEM%.fq}}
         mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
         SRC_ZIP="$OUTDIR/${{STEM}}_fastqc.zip"
         [ "$SRC_ZIP" = "{output.zip}" ] || mv "$SRC_ZIP" "{output.zip}"
@@ -395,7 +413,16 @@ rule fastqc_post_host:
         OUTDIR=$(dirname {output.html})
         mkdir -p $OUTDIR
         fastqc {input} --outdir $OUTDIR --threads {threads} 2> {log}
-        STEM=$(basename {input} .fastq.gz)
+        # fastqc names its output after the input minus a recognised
+        # extension, so the stem has to be derived the same way rather
+        # than by stripping one hardcoded suffix. basename only strips a
+        # suffix that matches: given a plain .fastq it left .fastq.gz
+        # unstripped, the mv below looked for a file that never existed,
+        # and the rule failed after fastqc had already succeeded.
+        STEM=$(basename {input})
+        STEM=${{STEM%.gz}}
+        STEM=${{STEM%.fastq}}
+        STEM=${{STEM%.fq}}
         mv $OUTDIR/${{STEM}}_fastqc.html {output.html}
         SRC_ZIP="$OUTDIR/${{STEM}}_fastqc.zip"
         [ "$SRC_ZIP" = "{output.zip}" ] || mv "$SRC_ZIP" "{output.zip}"
