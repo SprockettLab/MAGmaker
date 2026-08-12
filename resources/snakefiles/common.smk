@@ -205,6 +205,33 @@ def load_metadata(config):
 
 
 metadata_table, samples = load_metadata(config)
+
+
+def _validate_prototype_exclusions(config, samples):
+    """Check params.prototypes.exclude against the sample list, at load.
+
+    Validated here rather than inside the prototype_selection rule so a
+    typo stops the run immediately instead of after sketching and
+    comparing every sample, and so the failure names a metadata problem
+    rather than surfacing as a Python traceback mid-DAG."""
+    excluded = (config.get("params", {}).get("prototypes", {}).get("exclude")
+                or [])
+    if isinstance(excluded, str):
+        _fail("params.prototypes.exclude must be a list of sample names, "
+              "not a single string. Write it as:\n"
+              "    exclude:\n      - %s" % excluded)
+    unknown = [e for e in excluded if e not in samples]
+    if unknown:
+        _fail(
+            "params.prototypes.exclude names sample(s) that are not in the "
+            "metadata table:\n"
+            "  %s\n\n"
+            "Known samples:\n  %s"
+            % (", ".join(unknown), ", ".join(samples)))
+    return set(excluded)
+
+
+prototype_exclusions = _validate_prototype_exclusions(config, samples)
 seqruns = metadata_table.index
 reads = config["reads"]
 

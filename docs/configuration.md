@@ -111,6 +111,7 @@ params:
     n: 10                  # representative samples selected for binning
     min_seqs: 50           # depth floor; use 10000000 for real data
     max_seqs: 200000000    # depth ceiling
+    exclude: []            # samples barred from the prototype pool
 ```
 
 Both depth bounds are compared against fastp's `total_reads`, which counts
@@ -126,6 +127,26 @@ against a pathological input. Check your own depth distribution before
 lowering it.
 
 `n` determines how many prototype samples are selected by `prototype_selection` and used by `generate_binning_config` to populate `binning.txt`. Setting `n` higher produces better binning coverage but more assembly/mapping jobs.
+
+`exclude` lists samples by name that may never serve as a prototype:
+
+```yaml
+params:
+  prototypes:
+    exclude:
+      - Control_Sample
+```
+
+A run control is the usual case. It should still be trimmed, screened and
+profiled, because you want to know what is in it, but it is not part of the
+biology and has no business forming a differential-coverage basis for
+binning. The depth bounds cannot express this, since a control can be
+sequenced as deeply as any real sample.
+
+A name that matches no sample in the metadata table stops the run at load
+with an error naming it. Silently ignoring a typo would leave the very
+sample you meant to exclude still acting as a coverage basis, which is the
+failure this option exists to prevent.
 
 ### Mappers and binners (binning pipeline)
 

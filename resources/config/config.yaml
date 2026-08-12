@@ -194,6 +194,17 @@ params:
     max_seqs: 200000000
     n: 10                 # representative samples selected for binning
 
+    # Samples that must never serve as a prototype, by sample name. A run
+    # control belongs here: it should still be trimmed, screened and
+    # profiled so its content is known, but it is not part of the biology
+    # and has no business forming a differential-coverage basis for
+    # binning. Depth bounds cannot express this, since a control can be
+    # sequenced as deeply as anything else.
+    #
+    # A name here that matches no sample stops the run rather than being
+    # ignored, so a typo cannot silently leave a control in the pool.
+    exclude: []
+
   # ── 5  MAPPING ─────────────────────────────────────────────────────────────
 
   minimap2:

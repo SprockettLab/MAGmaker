@@ -241,7 +241,8 @@ rule prototype_selection:
         file = "output/prototype_selection/prototype_selection/selected_prototypes.yaml"
     params:
         min_seqs = config['params']['prototypes']['min_seqs'],
-        max_seqs = config['params']['prototypes']['max_seqs']
+        max_seqs = config['params']['prototypes']['max_seqs'],
+        exclude = sorted(prototype_exclusions)
     log:
         "output/logs/prototype_selection/prototype_selection/prototype_selection.log"
     threads: 1
@@ -257,10 +258,20 @@ rule prototype_selection:
         # Filter by post-trimming read depth from fastp JSON (already computed, tiny files).
         # The labels file contains nonhost FASTQ paths; reading those directly is
         # prohibitively slow and memory-intensive for large cohorts.
+        # Samples the config bars from the prototype pool. The names were
+        # checked against the metadata at load time, so anything here is
+        # real and simply drops out of the pool.
+        excluded = set(params['exclude'])
+        if excluded:
+            print("Excluded from the prototype pool by config: %s"
+                  % ', '.join(sorted(excluded)))
+
         pf_seqs = []
         for col in df.columns:
             fp = col_to_sigpath.get(col, col)
             sample = os.path.basename(fp).split('.')[0]
+            if sample in excluded:
+                continue
             # Sum post-trimming read depth across all of this sample's runs.
             # Run names come from the metadata table (e.g. 'Run1'); must not
             # be hardcoded, since fastp writes one JSON per {sample}.{seqrun}.
