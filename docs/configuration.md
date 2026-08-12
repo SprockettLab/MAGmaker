@@ -163,6 +163,30 @@ binners:
 
 All enabled binners run independently and their results are combined by DAS_Tool.
 
+```yaml
+params:
+  das_tool:
+    search_engine: 'diamond'
+    score_threshold: 0.5
+```
+
+`score_threshold` decides which bins DAS_Tool keeps. The score combines
+single-copy-marker completeness and purity, so raising it keeps fewer and
+cleaner bins, and lowering it keeps more.
+
+`0.5` is DAS_Tool's own default and is deliberately conservative. A bin that
+only one binner resolves is discarded even when it is a real organism that
+appears in no bin DAS_Tool kept. Comparing this pipeline against a published
+single-binner study on identical reads, all 70 genomes that study recovered
+and this pipeline did not were present among the per-binner bins and were
+dropped at this step. None of them were missing for want of coverage or
+assembly.
+
+That makes the setting worth knowing about, but not worth changing blindly.
+The genomes a lower threshold admits are only worth having if the GUNC pass
+rate and contamination of the whole MAG set hold up, so change it on one
+cohort and compare those before applying it broadly.
+
 ### Taxonomy and profiling
 
 ```yaml

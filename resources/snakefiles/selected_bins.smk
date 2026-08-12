@@ -117,6 +117,8 @@ rule run_DAS_Tool:
     params:
         basename = "output/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}",
         search_engine = config['params']['das_tool']['search_engine'],
+        score_threshold = config['params']['das_tool'].get(
+            'score_threshold', 0.5),
         # Only bin sets that actually contain bins reach DAS_Tool. A binner may
         # legitimately decline a sample -- MaxBin2 stops when an assembly has
         # too few single-copy marker genes to seed its EM -- and passing it an
@@ -175,6 +177,7 @@ rule run_DAS_Tool:
             --write_bins \
             --write_bin_evals \
             --threads {threads} \
+            --score_threshold {params.score_threshold} \
             --search_engine {params.search_engine} \
             2> {log} 1>&2
             status=$?
