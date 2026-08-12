@@ -226,6 +226,23 @@ params:
     min_contig_length: 1500
   das_tool:
     search_engine: 'diamond'
+    # DAS_Tool keeps a bin only if its score clears this. The score combines
+    # single-copy-marker completeness and purity, so raising it keeps fewer,
+    # cleaner bins and lowering it keeps more, at some risk of admitting
+    # poorer ones.
+    #
+    # 0.5 is DAS_Tool's own default and is deliberately conservative: a bin
+    # that only one binner resolves is discarded even when it is a real
+    # organism absent from every kept bin. Comparing this pipeline's output
+    # against a published single-binner set on identical reads, every one of
+    # the 70 genomes the other study recovered and this one did not was
+    # present among these bins and dropped here, so the setting is worth
+    # knowing about and worth being able to change.
+    #
+    # Lower it only with the quality of the whole MAG set in view: the
+    # genomes it admits are worth having only if GUNC pass rate and
+    # contamination hold up.
+    score_threshold: 0.5
 
   # ── 7  MAG QC ──────────────────────────────────────────────────────────────
 
