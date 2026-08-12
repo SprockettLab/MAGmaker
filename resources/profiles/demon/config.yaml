@@ -6,6 +6,14 @@ default-resources:
   runtime: 120        # minutes; defq default is 120, max is 90 days
 
 jobs: 100
+
+# Caps concurrent kraken2 jobs within one workflow. kraken2 reads a ~200 GB
+# index per job, so a dozen at once saturate shared storage and jobs are
+# cancelled on wall clock having done almost no classification. This is a
+# per-workflow counter: several arms running side by side each get their
+# own allowance, so stagger arms as well when the queue is busy.
+resources:
+  - kraken_slots=2
 use-conda: true
 conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs
 

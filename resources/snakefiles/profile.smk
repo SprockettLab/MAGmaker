@@ -18,6 +18,14 @@ rule taxonomy_kraken:
         "../env/profile.yaml"
     threads:
         config['threads']['kraken2']
+    resources:
+        # kraken2 reads a ~200 GB index per job, so the cost is dominated by
+        # that read rather than by classification. Left uncapped, every
+        # sample in an arm competes for the same shared storage at once and
+        # jobs are cancelled on wall clock while doing almost no work. This
+        # is a counter, not a reservation: set `resources: [kraken_slots=N]`
+        # in the profile to allow N concurrent kraken jobs per workflow.
+        kraken_slots=1
     log:
         "output/logs/profile/kraken2/taxonomy_kraken/{sample}.log"
     benchmark:
