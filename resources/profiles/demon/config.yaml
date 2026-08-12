@@ -21,6 +21,22 @@ set-resources:
   host_filter:
     mem_mb: 16000
     runtime: 480
+  # Indexing a 3 Gbp primate reference takes hours, and this rule had no
+  # entry at all, so it inherited the 120 min default and was cancelled
+  # mid-build for both Papio cynocephalus and Pan paniscus. It only ever
+  # passed before because the references in use were already indexed; every
+  # new host species would have hit this.
+  host_bowtie2_build:
+    runtime: 1440
+  # Normally minutes, but not on uncompressed input: the MG-RAST douc
+  # libraries are ~40 GB each as plain FASTQ rather than the .gz everything
+  # else uses, and at 120 min all four were cancelled around 70% read.
+  fastqc_pre_trim:
+    runtime: 360
+  fastqc_post_trim:
+    runtime: 360
+  fastqc_post_host:
+    runtime: 360
   megahit:
     runtime: 480
   metaspades:
@@ -30,10 +46,10 @@ set-resources:
     runtime: 1440       # metaspades is much slower than megahit
   metaphlan:
     mem_mb: 32000
-    runtime: 240
+    runtime: 480        # 240 was hit exactly, on a deep single-end sample
   taxonomy_kraken:
     mem_mb: 220000
-    runtime: 240
+    runtime: 480        # same, on the same arm
   # Memory for these two comes from config['mem_mb'] (read by the rules),
   # so set only runtime here to avoid overriding the config-driven mem.
   run_checkm2:
