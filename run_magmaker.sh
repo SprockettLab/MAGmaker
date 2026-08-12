@@ -21,6 +21,14 @@
 #   ./run_magmaker.sh --profile resources/profiles/demon -n   # dry run
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --configfile resources/config/<Project>_config.yaml   # project config
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --skip-kraken --skip-metaphlan          # no read-level profiling
+#
+# --skip-kraken and --skip-metaphlan drop the corresponding read-level
+# profiling targets for this run only, leaving the config file alone. Use
+# them when taxonomy comes from GTDB-Tk on the MAGs rather than from reads;
+# kraken2 in particular reads a ~200 GB index per sample and is the
+# heaviest I/O in the pipeline for what it contributes.
 #
 # To stop after the MAG summary table so you can review/edit
 # output/mag_qc/mag_summary.tsv before renaming, run stages manually:
@@ -30,6 +38,27 @@
 #     --config binning=output/config/auto_binning.txt
 
 set -euo pipefail
+
+# --skip-kraken / --skip-metaphlan are consumed here and turned into config
+# overrides; every other argument is passed through untouched. They are
+# separate flags because the two tools are useful independently: an
+# analysis taking its taxonomy from GTDB-Tk on the MAGs needs neither, but
+# one that wants community profiles may still want metaphlan without
+# paying for kraken2's ~200 GB index read per sample.
+SKIP_CONFIG=()
+PASSTHRU=()
+for arg in "$@"; do
+    case "${arg}" in
+        --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
+        --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
+        *)                PASSTHRU+=("${arg}") ;;
+    esac
+done
+if [[ ${#SKIP_CONFIG[@]} -gt 0 ]]; then
+    PASSTHRU+=("--config" "${SKIP_CONFIG[@]}")
+    echo "skipping: ${SKIP_CONFIG[*]}"
+fi
+set -- ${PASSTHRU[@]+"${PASSTHRU[@]}"}
 
 if [[ ! -f Snakefile || ! -f Snakefile-bin ]]; then
     echo "ERROR: run_magmaker.sh must be run from the MAGmaker repository root." >&2

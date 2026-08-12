@@ -163,6 +163,40 @@ binners:
 
 All enabled binners run independently and their results are combined by DAS_Tool.
 
+### Read-level profiling
+
+```yaml
+biobakery:
+  - metaphlan
+
+profilers:
+  - kraken2
+  - bracken
+```
+
+Both lists are honoured: removing an entry drops that tool's targets from
+the run. (`biobakery` previously had no effect, because the metaphlan table
+was required by `rule all` regardless of what the list said.)
+
+For a single run, `--skip-kraken` and `--skip-metaphlan` do the same thing
+without editing the config:
+
+```bash
+./run_magmaker.sh --profile resources/profiles/demon --skip-kraken
+```
+
+They are separate flags because the tools are useful independently. An
+analysis that takes its taxonomy from GTDB-Tk on the MAGs needs neither;
+one that wants community profiles may still want metaphlan while skipping
+kraken2, which reads a ~200 GB index per sample and is the heaviest I/O in
+the pipeline for what it contributes.
+
+When kraken2 does run, `resources: [kraken_slots=N]` in the profile caps
+how many of its jobs run at once within a workflow. The demon profile sets
+2. Without a cap, every sample in an arm competes for the same index read
+simultaneously and jobs are cancelled on wall clock while doing almost no
+work.
+
 ```yaml
 params:
   das_tool:
