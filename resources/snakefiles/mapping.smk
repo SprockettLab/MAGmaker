@@ -143,6 +143,16 @@ rule sort_index_bam:
         mem_mb=mem_escalate('sort_index_bam', base_default=12000)
     shell:
         """
-        samtools sort -o {output.bam} -@ {threads} {input.aln} 2> {log}
+        # -m is per THREAD and samtools overshoots it, so this takes 60% of
+        # the reservation and divides it by the thread count. Without -m,
+        # samtools uses its 768 MB default however much memory the job was
+        # given, and spills the remainder to temp files: at 8 threads that
+        # is ~6 GB of a 24 GB reservation in RAM and everything else
+        # written to shared storage, which is the resource that is actually
+        # scarce here. Using the memory already reserved cuts the number of
+        # temp chunks by roughly the same factor.
+        MEM_PER_THREAD=$(( {resources.mem_mb} * 6 / 10 / {threads} ))
+        samtools sort -m ${{MEM_PER_THREAD}}M \
+            -o {output.bam} -@ {threads} {input.aln} 2> {log}
         samtools index -b -@ {threads} {output.bam} 2>> {log}
         """

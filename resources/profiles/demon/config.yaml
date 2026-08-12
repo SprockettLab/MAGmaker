@@ -58,6 +58,13 @@ set-resources:
   taxonomy_kraken:
     mem_mb: 220000
     runtime: 480        # same, on the same arm
+  # Sorting the BAMs from a large arm is not a two-minute job: a 20-sample
+  # cohort produces a 614 GB mapping directory, and samtools writes its
+  # temp chunks to shared storage. At the 120 min default this rule was
+  # cancelled repeatedly on the biggest arms. Only runtime is set here;
+  # memory comes from mem_escalate in the rule and must not be overridden.
+  sort_index_bam:
+    runtime: 480
   # Memory for these two comes from config['mem_mb'] (read by the rules),
   # so set only runtime here to avoid overriding the config-driven mem.
   run_checkm2:
