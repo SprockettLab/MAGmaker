@@ -66,6 +66,18 @@ for arg in "$@"; do
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
+        # --------------------------------------------------------------
+        # Everything collected here becomes ONE --config on each snakemake
+        # command line. Snakemake's --config takes nargs="*" with argparse's
+        # default store action, so a second --config REPLACES the first
+        # rather than adding to it. Step 3 used to append its own
+        # `--config binning=...` after these, which silently discarded every
+        # override above it -- so --skip-cmseq still ran CMSeq,
+        # --skip-gtdbtk-classify still ran pplacer, and --binette still ran
+        # DAS_Tool, all without a word of warning. Steps 1 and 2 were
+        # unaffected, which is why --skip-kraken appeared to work: kraken
+        # only runs in step 1.
+        # --------------------------------------------------------------
         # GTDB-Tk runs identify, align and classify. Nearly all of the cost
         # is classify, which runs pplacer and is why this rule reserves
         # 128-320 GB. --skip-gtdbtk-classify stops after align, which still
@@ -83,10 +95,38 @@ for arg in "$@"; do
     esac
 done
 if [[ ${#SKIP_CONFIG[@]} -gt 0 ]]; then
-    PASSTHRU+=("--config" "${SKIP_CONFIG[@]}")
     echo "config overrides: ${SKIP_CONFIG[*]}"
 fi
-set -- ${PASSTHRU[@]+"${PASSTHRU[@]}"}
+
+# A --config of the user's own would be a second one on the final command
+# line and would silently drop everything this script sets, which is the
+# failure described above. Refused rather than merged: merging would mean
+# parsing arbitrary KEY=VALUE lists, and the flags exist precisely so that
+# is not necessary.
+for arg in ${PASSTHRU[@]+"${PASSTHRU[@]}"}; do
+    if [[ "${arg}" == "--config" || "${arg}" == "-C" ]]; then
+        echo "ERROR: pass --config through run_magmaker.sh is not supported." >&2
+        echo "Snakemake keeps only the LAST --config on a command line, so" >&2
+        echo "yours would silently discard the ones this script sets for" >&2
+        echo "--skip-* and --binette/--das-tool, or be discarded by them." >&2
+        echo "" >&2
+        echo "Use the dedicated flags, or call snakemake directly:" >&2
+        echo "  snakemake --snakefile Snakefile-bin rename_mags [options] \\" >&2
+        echo "    --config binning=output/config/auto_binning.txt KEY=VALUE" >&2
+        exit 1
+    fi
+done
+
+# Steps 1 and 2 take the overrides as given. Step 3 needs `binning=` in the
+# SAME --config, which is why it is built separately rather than appended
+# to a shared one at the call site.
+STAGE12=(${PASSTHRU[@]+"${PASSTHRU[@]}"})
+if [[ ${#SKIP_CONFIG[@]} -gt 0 ]]; then
+    STAGE12+=("--config" "${SKIP_CONFIG[@]}")
+fi
+STAGE3=(${PASSTHRU[@]+"${PASSTHRU[@]}"} "--config"
+        ${SKIP_CONFIG[@]+"${SKIP_CONFIG[@]}"}
+        "binning=output/config/auto_binning.txt")
 
 if [[ ! -f Snakefile || ! -f Snakefile-bin ]]; then
     echo "ERROR: run_magmaker.sh must be run from the MAGmaker repository root." >&2
@@ -96,7 +136,7 @@ fi
 echo "========================================"
 echo " MAGmaker  Step 1/3 — Main pipeline"
 echo "========================================"
-snakemake "$@"
+snakemake ${STAGE12[@]+"${STAGE12[@]}"}
 
 echo ""
 echo "========================================"
@@ -105,7 +145,7 @@ echo "========================================"
 # Target goes before "$@" so a trailing variable-length option in the
 # user's args (e.g. --configfile FILE, which accepts one or more values)
 # cannot swallow the target name.
-snakemake generate_binning_config "$@"
+snakemake generate_binning_config ${STAGE12[@]+"${STAGE12[@]}"}
 
 echo ""
 echo "========================================"
@@ -124,8 +164,7 @@ if [[ ! -f output/config/auto_binning.txt ]]; then
 else
     # Target before "$@"; keep the variable-length --config last so it
     # doesn't consume, and isn't consumed by, options in the user's args.
-    snakemake --snakefile Snakefile-bin rename_mags "$@" \
-        --config binning=output/config/auto_binning.txt
+    snakemake --snakefile Snakefile-bin rename_mags ${STAGE3[@]+"${STAGE3[@]}"}
 
     echo ""
     echo "========================================"
