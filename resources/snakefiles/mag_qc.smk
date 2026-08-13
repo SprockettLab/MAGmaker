@@ -87,37 +87,167 @@ rule run_gunc:
         """
 
 
-rule run_gtdbtk:
+# =============================================================================
+# GTDB-Tk, as its three real stages
+#
+#   identify  Prodigal gene calls, then an HMM search for the bac120/ar53
+#             markers
+#   align     the masked concatenated alignment, and with it MSA_Percent
+#   classify  pplacer placement in the reference tree
+#
+# Split because the stages differ enormously in cost and in what they are
+# for. GTDB-Tk's documentation puts the bacterial memory requirement at
+# about 140 GB and attributes it to pplacer, which only classify runs;
+# identify and align fit in a fraction of that. Splitting them means an
+# analysis that needs MSA_Percent but not taxonomy never schedules a job
+# that only the largest nodes can take.
+#
+# The other reason is resumability. --skip-gtdbtk-classify then a later run
+# without it adds ONLY classify: identify and align are already done and
+# Snakemake sees them as up to date. Running this as one rule could not do
+# that -- a single sentinel is either present or absent, so the second run
+# would either redo all three stages or, worse, do nothing at all.
+#
+# Existing runs made before the split have classify_wf's output but none of
+# the per-stage sentinels. Both upstream rules therefore detect complete
+# output and reuse it instead of recomputing, and stamp the sentinel with
+# that output's own mtime rather than the current time. Without the stamp a
+# freshly created sentinel would be newer than the .done beside it and would
+# trigger a pointless re-classification of every finished arm.
+# =============================================================================
+
+rule gtdbtk_identify:
     """
-    Places MAGs in GTDB, and measures how much of the marker alignment each
-    one fills.
-
-    Runs `classify_wf` unchanged by default. With --skip-gtdbtk-classify it
-    runs `identify` and `align` only and stops before pplacer, which is
-    where nearly all of GTDB-Tk's memory and runtime live. See
-    gtdbtk_mode() in common.smk for why that is worth doing.
-
-    Kept as ONE rule rather than split into three. Three rules would need
-    per-stage sentinel files that no existing run has, and a missing input
-    forces Snakemake to rebuild the chain that produces it -- so splitting
-    would re-run GTDB-Tk across every finished arm to materialise files
-    whose contents are already on disk. The memory saving, which is the
-    actual point, is available without paying that.
+    Calls genes and finds the GTDB marker genes in each MAG.
     """
     input:
         done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
+    output:
+        done=touch("output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.identify.done")
+    params:
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
+        out_dir="output/mag_qc/gtdbtk/{mapper}/{contig_sample}",
+        db_path=config['params']['gtdbtk']['db_path']
+    threads:
+        config['threads']['gtdbtk']
+    retries:
+        config['retries'].get('run_gtdbtk', 2)
+    resources:
+        mem_mb=mem_escalate('gtdbtk_align', base_default=32000, cap_multiple=2)
+    conda:
+        "../env/gtdbtk.yaml"
+    log:
+        "output/logs/mag_qc/gtdbtk/{mapper}/{contig_sample}.identify.log"
+    benchmark:
+        "output/benchmarks/mag_qc/gtdbtk/{mapper}/{contig_sample}.identify.txt"
+    shell:
+        """
+        if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
+            echo "No bins in {params.bins_dir}; skipping gtdbtk identify." >> {log}
+            exit 0
+        fi
+
+        # Output from a classify_wf run made before this rule existed is
+        # complete and correct; recomputing it would cost hours for nothing.
+        existing=$(ls {params.out_dir}/identify/*markers_summary.tsv 2>/dev/null | head -1 || true)
+        if [ -n "$existing" ]; then
+            echo "Reusing existing identify output in {params.out_dir}/identify" >> {log}
+            touch -r "$existing" {output.done}
+            exit 0
+        fi
+
+        export GTDBTK_DATA_PATH="{params.db_path}"
+        gtdbtk identify \
+            --genome_dir {params.bins_dir} \
+            --out_dir {params.out_dir} \
+            --cpus {threads} \
+            --extension fa \
+            2> {log} 1>&2
+        """
+
+
+rule gtdbtk_align:
+    """
+    Builds the concatenated marker alignment, which is where MSA_Percent
+    comes from.
+    """
+    input:
+        identify="output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.identify.done"
+    output:
+        done=touch("output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.align.done")
+    params:
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
+        out_dir="output/mag_qc/gtdbtk/{mapper}/{contig_sample}",
+        db_path=config['params']['gtdbtk']['db_path'],
+        # Two values because the two modes want different things. When
+        # classify follows, GTDB-Tk's own default of 10 applies and the run
+        # behaves as it always has. When it does not, the point is to have a
+        # number for every genome, and 10 would drop the weakest ones into
+        # filtered.tsv instead of reporting a low value for them -- and a
+        # genome missing from the output is not the same as one measured at
+        # 4%.
+        min_perc_aa=(
+            config['params']['gtdbtk'].get('min_perc_aa_no_classify', 0)
+            if gtdbtk_mode() == 'align_only'
+            else config['params']['gtdbtk'].get('min_perc_aa', 10)
+        )
+    threads:
+        config['threads']['gtdbtk']
+    retries:
+        config['retries'].get('run_gtdbtk', 2)
+    resources:
+        mem_mb=mem_escalate('gtdbtk_align', base_default=32000, cap_multiple=2)
+    conda:
+        "../env/gtdbtk.yaml"
+    log:
+        "output/logs/mag_qc/gtdbtk/{mapper}/{contig_sample}.align.log"
+    benchmark:
+        "output/benchmarks/mag_qc/gtdbtk/{mapper}/{contig_sample}.align.txt"
+    shell:
+        """
+        if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
+            echo "No bins in {params.bins_dir}; skipping gtdbtk align." >> {log}
+            exit 0
+        fi
+
+        existing=$(ls {params.out_dir}/align/*user_msa.fasta* 2>/dev/null | head -1 || true)
+        if [ -n "$existing" ]; then
+            echo "Reusing existing align output in {params.out_dir}/align" >> {log}
+            touch -r "$existing" {output.done}
+            exit 0
+        fi
+
+        export GTDBTK_DATA_PATH="{params.db_path}"
+        gtdbtk align \
+            --identify_dir {params.out_dir} \
+            --out_dir {params.out_dir} \
+            --cpus {threads} \
+            --min_perc_aa {params.min_perc_aa} \
+            2> {log} 1>&2
+        """
+
+
+rule run_gtdbtk:
+    """
+    Places each MAG in the GTDB reference tree.
+
+    Keeps the name `run_gtdbtk` because the demon profile sets its wall
+    clock and config sets retries.run_gtdbtk by that name, and this is the
+    stage those values were measured for: pplacer is what takes hours and
+    hundreds of gigabytes.
+
+    Never requested under --skip-gtdbtk-classify. Nothing depends on its
+    output in that mode, so it is not that the rule is skipped -- it is that
+    the DAG never reaches it.
+    """
+    input:
+        align="output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.align.done"
     output:
         done=touch("output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.done")
     params:
         bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
         out_dir="output/mag_qc/gtdbtk/{mapper}/{contig_sample}",
-        db_path=config['params']['gtdbtk']['db_path'],
-        mode=gtdbtk_mode(),
-        # align drops genomes below --min_perc_aa into filtered.tsv rather
-        # than reporting a low value for them, and a genome missing from the
-        # output is not the same as a genome measured at 4%. Zero keeps
-        # every genome and lets the analysis choose its own floor.
-        min_perc_aa=config['params']['gtdbtk'].get('min_perc_aa', 0)
+        db_path=config['params']['gtdbtk']['db_path']
     threads:
         config['threads']['gtdbtk']
     retries:
@@ -128,17 +258,9 @@ rule run_gtdbtk:
         # nodes. Start at the value that suits most samples and escalate on
         # retry, capped by gtdbtk_max. The .get keeps configs predating
         # gtdbtk_max working.
-        #
-        # Without classify there is no pplacer, so the whole escalation is
-        # beside the point: identify and align are gene calling, an HMM
-        # search and an alignment, and they fit in a fraction of it.
-        mem_mb=lambda wildcards, attempt: (
-            min(config['mem_mb'].get('gtdbtk_align_max',
-                                     config['mem_mb'].get('gtdbtk_align', 32000) * 2),
-                config['mem_mb'].get('gtdbtk_align', 32000) * attempt)
-            if gtdbtk_mode() == 'align_only' else
-            min(config['mem_mb'].get('gtdbtk_max', config['mem_mb']['gtdbtk']),
-                config['mem_mb']['gtdbtk'] * attempt)
+        mem_mb=lambda wildcards, attempt: min(
+            config['mem_mb'].get('gtdbtk_max', config['mem_mb']['gtdbtk']),
+            config['mem_mb']['gtdbtk'] * attempt
         )
     conda:
         "../env/gtdbtk.yaml"
@@ -149,31 +271,24 @@ rule run_gtdbtk:
     shell:
         """
         if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
-            echo "No bins in {params.bins_dir}; skipping gtdbtk." >> {log}
-        elif [ "{params.mode}" = "align_only" ]; then
-            export GTDBTK_DATA_PATH="{params.db_path}"
-            echo "--skip-gtdbtk-classify: running identify and align only; pplacer will not run." >> {log}
-            gtdbtk identify \
-                --genome_dir {params.bins_dir} \
-                --out_dir {params.out_dir} \
-                --cpus {threads} \
-                --extension fa \
-                2>> {log} 1>&2
-            gtdbtk align \
-                --identify_dir {params.out_dir} \
-                --out_dir {params.out_dir} \
-                --cpus {threads} \
-                --min_perc_aa {params.min_perc_aa} \
-                2>> {log} 1>&2
-        else
-            export GTDBTK_DATA_PATH="{params.db_path}"
-            gtdbtk classify_wf \
-                --genome_dir {params.bins_dir} \
-                --out_dir {params.out_dir} \
-                --cpus {threads} \
-                --extension fa \
-                2> {log} 1>&2
+            echo "No bins in {params.bins_dir}; skipping gtdbtk classify." >> {log}
+            exit 0
         fi
+
+        # Already classified by a classify_wf run predating the split.
+        if ls {params.out_dir}/gtdbtk.*.summary.tsv 2>/dev/null 1>/dev/null; then
+            echo "Reusing existing classification in {params.out_dir}" >> {log}
+            exit 0
+        fi
+
+        export GTDBTK_DATA_PATH="{params.db_path}"
+        gtdbtk classify \
+            --genome_dir {params.bins_dir} \
+            --align_dir {params.out_dir} \
+            --out_dir {params.out_dir} \
+            --cpus {threads} \
+            --extension fa \
+            2> {log} 1>&2
         """
 
 
@@ -194,14 +309,20 @@ rule make_mag_summary:
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
         ),
-        # Empty when --skip-gtdbtk was given, in which case the taxonomy and
+        # Which GTDB-Tk stage the summary waits for. Requiring only the
+        # stage that is actually wanted is what keeps classify out of the
+        # DAG entirely under --skip-gtdbtk-classify, rather than running it
+        # and discarding the result.
+        #
+        # Empty under --skip-gtdbtk, in which case the taxonomy and
         # MSA_Percent columns are written as NA rather than omitted, so a run
         # without GTDB-Tk stays distinguishable from a MAG it could not place.
-        gtdbtk=lambda wildcards: (expand(
-            "output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.done",
+        gtdbtk=lambda wildcards: ([] if gtdbtk_mode() == 'none' else expand(
+            "output/mag_qc/gtdbtk/{mapper}/{contig_sample}/" + (
+                ".align.done" if gtdbtk_mode() == 'align_only' else ".done"),
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
-        ) if gtdbtk_mode() != 'none' else []),
+        )),
         # The selection tool's own report. Which one depends on
         # params.consolidation.tool; only the active tool's outputs are
         # required, so switching tools does not demand the other's files.

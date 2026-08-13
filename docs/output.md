@@ -153,9 +153,22 @@ genomes below that threshold into `filtered.tsv` instead of reporting a low
 value for them, and a genome absent from the output is not the same as one
 measured at 4%.
 
-Two consequences worth knowing. Under `classify_wf` the align step uses the
-default floor of 10, so genomes below it have no `MSA_Percent` in a full
-run but do have one in an align-only run. And because `.done` is written
-either way, adding classification to a finished align-only run means
-deleting `output/mag_qc/gtdbtk/*/*/.done` first; `classify_wf` then redoes
-identify and align, which is wasteful but correct.
+### Adding classification later
+
+The three stages are three rules, each with its own sentinel
+(`.identify.done`, `.align.done`, `.done`). Re-running without
+`--skip-gtdbtk-classify` therefore runs **classify only**: identify and
+align are already done and Snakemake sees them as up to date. Nothing is
+recomputed and nothing needs deleting.
+
+Runs made before the split have `classify_wf`'s output but none of the
+per-stage sentinels. Both upstream rules detect complete output and reuse
+it rather than recomputing, and stamp the sentinel with that output's own
+mtime, so a finished arm is not re-classified just because the sentinels
+are new.
+
+One consequence worth knowing: with `min_perc_aa_no_classify: 0`, an
+align-only run followed later by classify will place genomes that a plain
+`classify_wf` run would have filtered at the default floor of 10. GTDB-Tk
+flags those in its warnings, which `mag_summary.tsv` carries as
+`GTDBTk_Warnings`.
