@@ -309,12 +309,23 @@ params:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gunc/gunc_db_progenomes2.1.dmnd"  # "" to auto-download
   gtdbtk:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk/release232"  # "" and see docs/databases.md
-    # Only used by --skip-gtdbtk-classify, which runs `align` directly.
-    # GTDB-Tk's own default is 10, and it DROPS genomes below it into
-    # filtered.tsv rather than reporting a low value. A genome missing from
-    # the output is not the same as one measured at 4%, so 0 keeps every
-    # genome and lets the analysis pick its own floor afterwards.
-    min_perc_aa: 0
+    # `align` drops genomes below this into filtered.tsv rather than
+    # reporting a low value for them. Two values because the two modes want
+    # different things.
+    #
+    # min_perc_aa applies when classify will follow. 10 is GTDB-Tk's own
+    # default and placing a genome that fills almost none of the alignment
+    # is not worth pplacer's time.
+    #
+    # min_perc_aa_no_classify applies under --skip-gtdbtk-classify, where
+    # the whole point is to have MSA_Percent for every genome. A genome
+    # missing from the output is not the same as one measured at 4%, so 0
+    # keeps them all and lets the analysis pick its own floor. Note this
+    # means an align-only run followed later by classify will place genomes
+    # a plain classify_wf run would have filtered; GTDB-Tk flags those in
+    # its warnings column, which mag_summary carries as GTDBTk_Warnings.
+    min_perc_aa: 10
+    min_perc_aa_no_classify: 0
 
   # ── 8  VIRAL / PLASMID ─────────────────────────────────────────────────────
 
