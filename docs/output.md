@@ -61,6 +61,8 @@ After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one
 | `GTDB_Classification` | Full GTDB-tk classification string |
 | `MSA_Percent` | Share of the concatenated marker alignment this genome fills with residues rather than gaps, from GTDB-tk. What determines how well a genome can be placed in a phylogeny, and not the same as completeness: a genome can recover most markers as fragments and still fill little of the alignment. `NA` if GTDB-tk did not place it |
 | `GTDBTk_Warnings` | GTDB-tk's own caveats about the placement, `NA` if none |
+| `Strain_Heterogeneity` | Percentage of evaluated positions carrying more than one allele, from CMSeq, when the sample's own reads are mapped back to its own MAGs. Detects a MAG that is a clean consensus of several co-resident strains of one species, which CheckM2 and GUNC cannot see. `NA` when CMSeq did not run or the MAG had too few covered positions |
+| `SH_Positions_Evaluated` | Positions covered at least 10x with base quality above 30. Fewer than 100 reports `NA` for the rate, following Pasolli 2019 and Sanders 2023 |
 | `Completeness` | CheckM2 completeness (%) |
 | `Contamination` | CheckM2 contamination (%) |
 | `Quality_Score` | Completeness − 5 × Contamination |

@@ -13,6 +13,7 @@ bins_base = snakemake.params.bins_base
 gtdbtk_base = snakemake.params.gtdbtk_base
 checkm2_base = snakemake.params.checkm2_base
 gunc_base = snakemake.params.gunc_base
+cmseq_base = snakemake.params.cmseq_base
 assemblers = snakemake.params.assemblers
 
 
@@ -109,6 +110,26 @@ def load_gtdbtk(gtdbtk_dir):
                     '' if pd.isna(warn) else str(warn),
                 )
     return tax_map
+
+
+def load_cmseq(cmseq_dir):
+    """in : a sample's cmseq directory
+       out: {MAG: (strain heterogeneity, positions evaluated)}
+
+    Missing directory means CMSeq did not run for this sample, which the
+    caller renders as NA. That is deliberately different from a MAG CMSeq
+    evaluated and found too poorly covered to score, which is also NA but
+    carries a position count."""
+    out = {}
+    path = os.path.join(cmseq_dir, 'strain_heterogeneity.tsv')
+    if os.path.exists(path):
+        df = pd.read_csv(path, sep='\t', dtype=str).fillna('NA')
+        for _, row in df.iterrows():
+            out[str(row.get('MAG', ''))] = (
+                str(row.get('Strain_Heterogeneity', 'NA')),
+                str(row.get('SH_Positions_Evaluated', 'NA')),
+            )
+    return out
 
 
 def load_checkm2(checkm2_dir):
@@ -230,6 +251,7 @@ for mapper in mappers:
 
         bin_to_binner = build_binner_map(bins_base, mapper, sample)
         tax_map = load_gtdbtk(os.path.join(gtdbtk_base, mapper, sample))
+        cmseq_map = load_cmseq(os.path.join(cmseq_base, mapper, sample))
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
         gunc_map = load_gunc(os.path.join(gunc_base, mapper, sample))
         assembler = get_assembler(sample, assemblers)
@@ -251,6 +273,7 @@ for mapper in mappers:
             gunc = gunc_map.get(bin_name, {
                 'gunc_clade_separation_score': '', 'gunc_pass': ''
             })
+            sh, sh_n = cmseq_map.get(bin_name, ('NA', 'NA'))
 
             all_mags.append({
                 'original_name': bin_name,
@@ -261,6 +284,8 @@ for mapper in mappers:
                 'tax_dict': tax_dict,
                 'tax_label': tax_label,
                 'gtdbtk_classification': full_classification,
+                'strain_heterogeneity': sh,
+                'sh_positions_evaluated': sh_n,
                 'msa_percent': msa_percent,
                 'gtdbtk_warnings': gtdbtk_warnings,
                 **qc,
@@ -308,6 +333,8 @@ for i, mag in enumerate(all_mags, 1):
         'MIMAG_Quality': mimag_quality(mag.get('completeness', ''), mag.get('contamination', '')),
         'GUNC_Clade_Separation_Score': mag.get('gunc_clade_separation_score', ''),
         'GUNC_Pass': mag.get('gunc_pass', ''),
+        'Strain_Heterogeneity': mag.get('strain_heterogeneity', 'NA') or 'NA',
+        'SH_Positions_Evaluated': mag.get('sh_positions_evaluated', 'NA') or 'NA',
         'Total_Length_BP': mag.get('total_length_bp', ''),
         'Num_Contigs': mag.get('num_contigs', ''),
         'Largest_Contig': mag.get('largest_contig', ''),
