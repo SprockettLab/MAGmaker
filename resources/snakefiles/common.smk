@@ -232,6 +232,18 @@ def _validate_prototype_exclusions(config, samples):
 
 
 prototype_exclusions = _validate_prototype_exclusions(config, samples)
+
+
+def cmseq_enabled():
+    """Whether strain heterogeneity is computed for this run.
+
+    Defined here rather than in cmseq.smk because mag_qc.smk calls it from
+    an input function, and relying on one snakefile's functions being
+    visible to another makes correctness depend on include order. common.smk
+    is included first by both Snakefile and Snakefile-bin, so anything
+    defined here is available everywhere."""
+    return str(config.get('skip_cmseq', '')).strip().lower() not in (
+        'true', '1', 'yes')
 seqruns = metadata_table.index
 reads = config["reads"]
 
