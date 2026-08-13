@@ -59,6 +59,8 @@ After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one
 | `Winning_Binner` | Which binner DAS_Tool selected (metabat2 / maxbin2 / concoct) |
 | `Domain` … `Species` | GTDB-tk taxonomy in separate columns; `NA` if unclassified |
 | `GTDB_Classification` | Full GTDB-tk classification string |
+| `MSA_Percent` | Share of the concatenated marker alignment this genome fills with residues rather than gaps, from GTDB-tk. What determines how well a genome can be placed in a phylogeny, and not the same as completeness: a genome can recover most markers as fragments and still fill little of the alignment. `NA` if GTDB-tk did not place it |
+| `GTDBTk_Warnings` | GTDB-tk's own caveats about the placement, `NA` if none |
 | `Completeness` | CheckM2 completeness (%) |
 | `Contamination` | CheckM2 contamination (%) |
 | `Quality_Score` | Completeness − 5 × Contamination |

@@ -80,6 +80,18 @@ def get_taxonomic_label(tax):
 
 
 def load_gtdbtk(gtdbtk_dir):
+    """Taxonomy plus the two placement fields worth keeping.
+
+    msa_percent is the share of the concatenated marker alignment the
+    genome fills with residues rather than gaps. That is what decides how
+    well a genome can be placed in a phylogeny, and it is not the same as
+    completeness: a genome can recover most of its markers as fragments
+    and still fill little of the alignment. GTDB-Tk already computes it,
+    so surfacing it here saves every downstream analysis from re-deriving
+    it from output that later runs overwrite.
+
+    warnings carries GTDB-Tk's own caveats about a placement, which are
+    otherwise lost once the summary is overwritten."""
     tax_map = {}
     for db_type in ('bac120', 'ar53'):
         summary = os.path.join(gtdbtk_dir, f'gtdbtk.{db_type}.summary.tsv')
@@ -88,7 +100,14 @@ def load_gtdbtk(gtdbtk_dir):
             for _, row in df.iterrows():
                 genome = str(row.get('user_genome', ''))
                 classification = str(row.get('classification', ''))
-                tax_map[genome] = (parse_gtdbtk_classification(classification), classification)
+                msa = row.get('msa_percent', '')
+                warn = row.get('warnings', '')
+                tax_map[genome] = (
+                    parse_gtdbtk_classification(classification),
+                    classification,
+                    '' if pd.isna(msa) else msa,
+                    '' if pd.isna(warn) else str(warn),
+                )
     return tax_map
 
 
@@ -219,8 +238,9 @@ for mapper in mappers:
             bin_name = os.path.splitext(os.path.basename(fa))[0]
             binner = resolve_binner(bin_name, bin_to_binner)
 
-            tax_entry = tax_map.get(bin_name, (parse_gtdbtk_classification(''), ''))
-            tax_dict, full_classification = tax_entry
+            tax_entry = tax_map.get(
+                bin_name, (parse_gtdbtk_classification(''), '', '', ''))
+            tax_dict, full_classification, msa_percent, gtdbtk_warnings = tax_entry
             tax_label = get_taxonomic_label(tax_dict)
 
             stats = compute_mag_stats(fa)
@@ -241,6 +261,8 @@ for mapper in mappers:
                 'tax_dict': tax_dict,
                 'tax_label': tax_label,
                 'gtdbtk_classification': full_classification,
+                'msa_percent': msa_percent,
+                'gtdbtk_warnings': gtdbtk_warnings,
                 **qc,
                 **gunc,
                 **stats
@@ -277,6 +299,9 @@ for i, mag in enumerate(all_mags, 1):
         'Genus': tax.get('genus', '') or 'NA',
         'Species': tax.get('species', '') or 'NA',
         'GTDB_Classification': mag['gtdbtk_classification'] or 'NA',
+        'MSA_Percent': mag.get('msa_percent', '') if str(
+            mag.get('msa_percent', '')) != '' else 'NA',
+        'GTDBTk_Warnings': mag.get('gtdbtk_warnings', '') or 'NA',
         'Completeness': mag.get('completeness', ''),
         'Contamination': mag.get('contamination', ''),
         'Quality_Score': mag.get('quality_score', ''),
