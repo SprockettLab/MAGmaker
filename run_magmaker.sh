@@ -23,6 +23,8 @@
 #       --configfile resources/config/<Project>_config.yaml   # project config
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-kraken --skip-metaphlan          # no read-level profiling
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --skip-cmseq                            # no strain heterogeneity
 #
 # --skip-kraken and --skip-metaphlan drop the corresponding read-level
 # profiling targets for this run only, leaving the config file alone. Use
@@ -51,6 +53,7 @@ for arg in "$@"; do
     case "${arg}" in
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
+        --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
         *)                PASSTHRU+=("${arg}") ;;
     esac
 done

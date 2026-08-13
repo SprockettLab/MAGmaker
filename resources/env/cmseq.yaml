@@ -1,0 +1,11 @@
+name: cmseq
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - cmseq
+  - minimap2
+  - samtools
+  - python >=3.8
+  - pandas

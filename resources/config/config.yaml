@@ -224,6 +224,21 @@ params:
     chunk_size: 10000
     overlap_size: 0
     min_contig_length: 1500
+  # Strain heterogeneity, the fraction of positions in a MAG carrying more
+  # than one allele when the sample's own reads are mapped back to it.
+  # CheckM2 sees material from another species and GUNC sees chimerism
+  # against a reference; neither sees a MAG that is a clean consensus of
+  # several co-resident strains of one species.
+  #
+  # These values match Pasolli 2019 and Sanders 2023 so the numbers are
+  # comparable with the published genome databases. Changing them makes
+  # that comparison invalid.
+  cmseq:
+    mincov: 10              # minimum depth for a position to be evaluated
+    minqual: 30             # minimum base quality
+    dominant_frq_thrsh: 0.8
+    min_positions: 100      # fewer evaluated positions than this reports NA
+
   das_tool:
     search_engine: 'diamond'
     # DAS_Tool keeps a bin only if its score clears this. The score combines
@@ -312,6 +327,7 @@ threads:
   run_concoct: 8
   concoct: 8
   run_DAS_Tool: 8
+  cmseq: 8
   # 7  MAG QC
   checkm2: 16
   gunc: 8

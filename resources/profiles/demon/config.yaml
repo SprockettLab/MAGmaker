@@ -65,6 +65,12 @@ set-resources:
   # memory comes from mem_escalate in the rule and must not be overridden.
   sort_index_bam:
     runtime: 480
+  # One alignment of a sample's reads against its own MAGs. Comparable to a
+  # single column of the all-vs-all mapping, and cannot reuse it: those
+  # BAMs are temp() and the all-vs-all maps prototype reads to each
+  # sample's contigs, never a non-prototype sample's reads to its own.
+  cmseq_map:
+    runtime: 480
   # Memory for these two comes from config['mem_mb'] (read by the rules),
   # so set only runtime here to avoid overriding the config-driven mem.
   run_checkm2:

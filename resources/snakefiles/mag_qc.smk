@@ -158,7 +158,15 @@ rule make_mag_summary:
             "output/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}_DASTool_summary.tsv",
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
-        )
+        ),
+        # Empty when --skip-cmseq was given, in which case the two strain
+        # heterogeneity columns are written as NA rather than omitted, so a
+        # run without CMSeq is distinguishable from a MAG it could not score.
+        cmseq=lambda wildcards: (expand(
+            "output/mag_qc/cmseq/{mapper}/{contig_sample}/strain_heterogeneity.tsv",
+            mapper=config['mappers'],
+            contig_sample=list(contig_pairings.keys())
+        ) if cmseq_enabled() else [])
     output:
         summary="output/mag_qc/mag_summary.tsv"
     params:
@@ -166,6 +174,7 @@ rule make_mag_summary:
         gtdbtk_base="output/mag_qc/gtdbtk",
         checkm2_base="output/mag_qc/checkm2",
         gunc_base="output/mag_qc/gunc",
+        cmseq_base="output/mag_qc/cmseq",
         mappers=config['mappers'],
         contig_samples=list(contig_pairings.keys()),
         assemblers=config['assemblers']
