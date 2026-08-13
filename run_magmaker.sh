@@ -25,6 +25,16 @@
 #       --skip-kraken --skip-metaphlan          # no read-level profiling
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-cmseq                            # no strain heterogeneity
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --binette                               # Binette instead of DAS_Tool
+#
+# --binette / --das-tool choose which tool reconciles the three per-binner
+# bin sets into one set of MAGs, overriding params.consolidation.tool for
+# this run only. DAS_Tool scores candidates with 51 single-copy genes;
+# Binette scores them with CheckM2, the same estimator mag_qc then uses to
+# judge the result. Their outputs land in DAS_Tool_Fastas/ and
+# Binette_Fastas/ respectively, so both can exist side by side in one run
+# directory and be compared.
 #
 # --skip-kraken and --skip-metaphlan drop the corresponding read-level
 # profiling targets for this run only, leaving the config file alone. Use
@@ -54,12 +64,17 @@ for arg in "$@"; do
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
+        # Which tool reconciles the per-binner bin sets. Given here rather
+        # than only in the config file so one arm can be run both ways
+        # without editing a tracked file between the two.
+        --binette)        SKIP_CONFIG+=("consolidation_tool=binette") ;;
+        --das-tool)       SKIP_CONFIG+=("consolidation_tool=das_tool") ;;
         *)                PASSTHRU+=("${arg}") ;;
     esac
 done
 if [[ ${#SKIP_CONFIG[@]} -gt 0 ]]; then
     PASSTHRU+=("--config" "${SKIP_CONFIG[@]}")
-    echo "skipping: ${SKIP_CONFIG[*]}"
+    echo "config overrides: ${SKIP_CONFIG[*]}"
 fi
 set -- ${PASSTHRU[@]+"${PASSTHRU[@]}"}
 

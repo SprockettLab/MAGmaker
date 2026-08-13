@@ -32,7 +32,8 @@ output/
 │       └── merged_abundance_table.txt merged taxonomy table (all samples)
 │
 ├── selected_bins/                      (binning pipeline)
-│   └── {mapper}/DAS_Tool_Fastas/{sample}/  DAS_Tool-selected MAG bins per sample
+│   ├── {mapper}/DAS_Tool_Fastas/{sample}/  DAS_Tool-selected MAG bins per sample
+│   └── {mapper}/Binette_Fastas/{sample}/   Binette-selected MAG bins per sample
 │
 └── mag_qc/                             (binning pipeline)
     ├── checkm2/{mapper}/{sample}/      CheckM2 quality reports
@@ -41,6 +42,17 @@ output/
     ├── mag_summary.tsv                 combined MAG table — editable
     └── renamed_mags/                   final MAG FASTAs with user-defined names
 ```
+
+Only one of `DAS_Tool_Fastas/` and `Binette_Fastas/` is produced per run,
+chosen by `params.consolidation.tool` or by `--binette` / `--das-tool`.
+Everything under `mag_qc/` reads whichever one the run selected, so
+`mag_summary.tsv` describes that tool's MAGs. Running an arm both ways
+leaves both directories in place, which is how the two are compared.
+
+For Binette, `Winning_Binner` in `mag_summary.tsv` can name more than one
+binner (`metabat2+concoct`). Binette builds candidate bins from the
+intersection, difference and union of overlapping input bins, so a selected
+bin is not always one that a single binner produced.
 
 ---
 

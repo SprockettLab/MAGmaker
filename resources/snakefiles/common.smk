@@ -244,6 +244,54 @@ def cmseq_enabled():
     defined here is available everywhere."""
     return str(config.get('skip_cmseq', '')).strip().lower() not in (
         'true', '1', 'yes')
+
+
+# Which tool reconciles the three per-binner bin sets into one set of MAGs,
+# and the directory its selected FASTAs land in. Everything downstream of
+# selection -- checkm2, gunc, gtdbtk, cmseq, mag_summary -- reads that one
+# directory, so switching tools moves a single path rather than editing
+# every consumer.
+#
+# DAS_Tool's directory name is unchanged, so an existing run keeps every
+# path it already has and nothing reruns on upgrade.
+CONSOLIDATION_TOOLS = {
+    'das_tool': 'DAS_Tool_Fastas',
+    'binette': 'Binette_Fastas',
+}
+
+
+def consolidation_tool():
+    """in : nothing; reads config
+       out: 'das_tool' or 'binette'
+
+    Settable two ways, because the two have different lifetimes: a config
+    file records what an arm is for, while --config consolidation_tool=...
+    overrides it for one invocation without editing a tracked file, which
+    is what comparing the two tools on one arm needs.
+
+    Validated here rather than where it is consumed so a typo stops the run
+    at DAG construction, naming the valid values, instead of surfacing much
+    later as an empty bins directory that looks like a sample with no MAGs.
+    """
+    tool = str(
+        config.get('consolidation_tool')
+        or config.get('params', {}).get('consolidation', {}).get('tool')
+        or 'das_tool'
+    ).strip().lower()
+    if tool not in CONSOLIDATION_TOOLS:
+        _fail(
+            "unknown consolidation tool: %r\n\n"
+            "Valid values are: %s\n\n"
+            "Set it in config.yaml as\n\n"
+            "    params:\n      consolidation:\n        tool: binette\n\n"
+            "or for a single run as\n\n"
+            "    --config consolidation_tool=binette"
+            % (tool, ", ".join(sorted(CONSOLIDATION_TOOLS)))
+        )
+    return tool
+
+
+SELECTED_FASTAS = CONSOLIDATION_TOOLS[consolidation_tool()]
 seqruns = metadata_table.index
 reads = config["reads"]
 

@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # Binette vendors CheckM2's scoring: it runs Pyrodigal and DIAMOND once
+  # over all contigs and reuses those results to score every candidate bin,
+  # so it needs the CheckM2 DIAMOND database but not the checkm2 package.
+  # Point params.checkm2.db_path at the same uniref100.KO.1.dmnd already
+  # configured for run_checkm2 rather than downloading a second copy.
+  - binette >=1.2.1
