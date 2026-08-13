@@ -66,6 +66,7 @@ include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/mapping.smk"
 include: "resources/snakefiles/binning.smk"
 include: "resources/snakefiles/selected_bins.smk"
+include: "resources/snakefiles/cmseq.smk"
 include: "resources/snakefiles/mag_qc.smk"
 include: "resources/snakefiles/virus.smk"
 
