@@ -67,7 +67,10 @@ rule cmseq_map:
     threads:
         config['threads'].get('cmseq', 8)
     conda:
-        "../env/cmseq.yaml"
+        # mapping.yaml already provides minimap2 and samtools, and is built
+        # in every arm. A dedicated environment for this rule would be a
+        # fourth copy of both and one more environment to create.
+        "../env/mapping.yaml"
     log:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.map.log"
     benchmark:
@@ -111,7 +114,13 @@ rule cmseq_poly:
         dom=config['params'].get('cmseq', {}).get('dominant_frq_thrsh', 0.8)
     threads: 1
     conda:
-        "../env/cmseq.yaml"
+        # metaphlan depends on cmseq, so profile.yaml already provides
+        # poly.py and that environment is built in every arm. If metaphlan
+        # ever drops that dependency, add `cmseq` to profile.yaml
+        # explicitly rather than creating a separate environment: building
+        # a new one across many arms at once corrupts the shared conda
+        # package cache, which is how this was discovered.
+        "../env/profile.yaml"
     log:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.poly.log"
     shell:
@@ -146,6 +155,7 @@ rule cmseq_aggregate:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.aggregate.log"
     threads: 1
     conda:
-        "../env/cmseq.yaml"
+        # the script is standard library only
+        "../env/mag_qc.yaml"
     script:
         "../scripts/aggregate_cmseq.py"
