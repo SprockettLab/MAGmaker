@@ -259,6 +259,43 @@ params:
     # contamination hold up.
     score_threshold: 0.5
 
+  # Which tool reconciles the three per-binner bin sets into one set of MAGs.
+  #
+  #   das_tool  scores candidates with 51 bacterial single-copy genes and a
+  #             redundancy heuristic. The historical default.
+  #   binette   scores them with CheckM2 -- the same estimator that judges
+  #             the result in mag_qc -- and builds extra candidates from the
+  #             intersection, difference and union of overlapping bins.
+  #
+  # Override for one run without editing this file:
+  #   ./run_magmaker.sh --binette
+  consolidation:
+    tool: das_tool
+
+  binette:
+    # Bins are scored as `completeness - contamination_weight * contamination`.
+    # At 2 a percentage point of contamination costs two points of
+    # completeness, so a cleaner genome beats a more complete one. That is
+    # the right direction for phylogenomics, where an incomplete genome
+    # contributes missing data that maximum likelihood tolerates while a
+    # contaminated one contributes markers from two lineages and is placed
+    # confidently in the wrong position. Lower it to favour completeness.
+    contamination_weight: 2.0
+    # These four bound both intermediate bin creation and final selection.
+    # They are Binette's own defaults and, unlike a DAS_Tool score, they are
+    # in units that mean something: CheckM2 percentages and base pairs.
+    #
+    # Note min_completeness 40 sits below MIMAG medium quality (50) and
+    # max_contamination 10 above the stricter <5% wanted for tree building.
+    # That is deliberate here: mag_summary records every MAG with its tier,
+    # and the analysis filters afterwards. Tightening these discards genomes
+    # before they can be counted.
+    min_completeness: 40
+    max_contamination: 10
+    min_length: 200000       # bp; excludes fragments too small to be a genome
+    max_length: 10000000     # bp
+    extra: ''
+
   # ── 7  MAG QC ──────────────────────────────────────────────────────────────
 
   checkm2:
@@ -327,6 +364,7 @@ threads:
   run_concoct: 8
   concoct: 8
   run_DAS_Tool: 8
+  run_binette: 16
   cmseq: 8
   # 7  MAG QC
   checkm2: 16
@@ -377,6 +415,12 @@ mem_mb:
   # from guesswork -- three rules that looked at risk structurally measured
   # under 10% of the default and are deliberately left alone.
   map_reads_minimap2: 12000     # measured 7972 MB against the 8000 default
+  # Binette holds every candidate bin's contigs and CheckM2 feature vectors
+  # in memory at once, and the set operations multiply the candidate count
+  # well past the number of input bins. Escalates on retry like gtdbtk
+  # rather than reserving the worst case for every sample.
+  run_binette: 64000
+  run_binette_max: 192000
   metaphlan: 32000              # measured 29688 MB against 32000
   sort_index_bam: 12000         # measured 6831 MB against the 8000 default
 
@@ -397,6 +441,7 @@ mem_mb:
 
 retries:
   run_DAS_Tool: 4
+  run_binette: 2
   run_gunc: 4
   # Escalates memory rather than just re-trying: run_gtdbtk requests
   # mem_mb.gtdbtk * attempt, capped at mem_mb.gtdbtk_max. Two retries reach

@@ -31,12 +31,12 @@ rule cmseq_reference:
     whichever MAG they fit best instead of being forced into each MAG in
     turn, which is also the more honest assignment."""
     input:
-        done="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done"
+        done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
     output:
         ref=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/mags.fa"),
         map=("output/mag_qc/cmseq/{mapper}/{contig_sample}/contig_to_mag.tsv")
     params:
-        bins_dir="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}"
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}"
     log:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.reference.log"
     threads: 1

@@ -259,3 +259,197 @@ rule consolidate_DAS_Tool_bins_all:
                                  contig_sample=contig_pairings.keys())
 
 
+# =============================================================================
+# Binette -- the alternative to DAS_Tool, selected by params.consolidation.tool
+#
+# Same job, different estimator. DAS_Tool scores candidate bins with 51
+# bacterial single-copy genes and a redundancy heuristic; Binette scores them
+# with CheckM2, which is the same estimator that judges the result in mag_qc.
+# Under DAS_Tool the selection is made with the weakest instrument available
+# and then audited with the strongest ones, and the two can disagree.
+#
+# Binette also generates candidates differently. For every pair of input bins
+# sharing at least one contig it forms the intersection, both differences and
+# the union, scores all of them, and greedily keeps a non-redundant set. Its
+# score is `completeness - contamination_weight * contamination`, default
+# weight 2, so the preference for clean genomes over complete ones is a
+# stated parameter rather than a property of whichever marker set a tool
+# happens to ship. See docs/bin_consolidation_options.md in the analysis repo.
+#
+# It consumes the same scaffolds2bin tables DAS_Tool does, so nothing above
+# this point in the pipeline changes or reruns.
+# =============================================================================
+
+rule stage_binette_inputs:
+    """
+    Collects a sample's per-binner scaffolds2bin tables under binner-named
+    filenames for Binette.
+
+    Binette has no --labels option. It infers a name per bin set by stripping
+    the common prefix and suffix from the input paths, and MAGmaker's tables
+    differ only in a middle path component while sharing the same basename
+    (<sample>_scaffolds2bin.tsv). Staging them as <binner>.tsv in one
+    directory makes the inferred names exactly metabat2/maxbin2/concoct,
+    which is what lets `origin` in Binette's report populate Winning_Binner.
+
+    Empty tables are skipped rather than staged. A binner may legitimately
+    decline a sample -- MaxBin2 stops when an assembly has too few marker
+    genes to seed its EM -- and an empty bin set is not the same as a bin set
+    with no bins in it.
+    """
+    input:
+        metabat2 = lambda wildcards: expand("output/selected_bins/metabat2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
+                mapper = config['mappers'],
+                contig_sample = wildcards.contig_sample),
+        maxbin2 = lambda wildcards: expand("output/selected_bins/maxbin2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
+                mapper = config['mappers'],
+                contig_sample = wildcards.contig_sample),
+        concoct = lambda wildcards: expand("output/selected_bins/concoct/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
+                mapper = config['mappers'],
+                contig_sample = wildcards.contig_sample)
+    output:
+        staged = directory("output/selected_bins/{mapper}/binette_input/{contig_sample}")
+    log:
+        "output/logs/selected_bins/{mapper}/stage_binette_inputs/{contig_sample}.log"
+    run:
+        import os
+        from shutil import copyfile
+        os.makedirs(output.staged, exist_ok=True)
+        staged = []
+        with open(log[0], 'w') as fh:
+            for label, paths in (('metabat2', input.metabat2),
+                                 ('maxbin2', input.maxbin2),
+                                 ('concoct', input.concoct)):
+                path = paths[0]
+                if os.path.getsize(path) == 0:
+                    fh.write("%s produced no bins; not staged\n" % label)
+                    continue
+                copyfile(path, os.path.join(output.staged, label + '.tsv'))
+                staged.append(label)
+            fh.write("staged: %s\n" % (", ".join(staged) or "none"))
+
+
+rule run_binette:
+    """
+    Reconciles the per-binner bin sets into one set of MAGs using CheckM2.
+    """
+    input:
+        staged = "output/selected_bins/{mapper}/binette_input/{contig_sample}",
+        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                    assembler = config['assemblers'],
+                    contig_sample = wildcards.contig_sample)
+    output:
+        report = "output/selected_bins/{mapper}/run_binette/{contig_sample}/final_bins_quality_reports.tsv",
+        contig2bin = "output/selected_bins/{mapper}/run_binette/{contig_sample}/final_contig_to_bin.tsv"
+    params:
+        out_dir = "output/selected_bins/{mapper}/run_binette/{contig_sample}",
+        # Binette's own default is "bin", which would make bin names collide
+        # across samples in the pooled mag_summary. Prefixing with the sample
+        # keeps every MAG name unique without a rename step.
+        prefix = "{contig_sample}",
+        db_path = config['params']['checkm2']['db_path'],
+        contamination_weight = config['params']['binette']['contamination_weight'],
+        min_completeness = config['params']['binette']['min_completeness'],
+        max_contamination = config['params']['binette']['max_contamination'],
+        min_length = config['params']['binette']['min_length'],
+        max_length = config['params']['binette']['max_length'],
+        extra = config['params']['binette'].get('extra', '')
+    threads:
+        config['threads']['run_binette']
+    resources:
+        mem_mb = mem_escalate('run_binette', base_default=64000)
+    retries:
+        config['retries'].get('run_binette', 2)
+    conda:
+        "../env/binette.yaml"
+    benchmark:
+        "output/benchmarks/selected_bins/{mapper}/run_binette/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/selected_bins/{mapper}/run_binette/{contig_sample}.log"
+    shell:
+        # The empty case is written out rather than left to fail, mirroring
+        # run_DAS_Tool: a sample every binner declined is a real outcome and
+        # must be distinguishable from a crash. Headers match Binette's own
+        # so make_mag_summary reads both the same way.
+        """
+            tables=$(ls {input.staged}/*.tsv 2>/dev/null || true)
+            if [ -z "$tables" ]; then
+                echo "No binner produced bins for this sample; no MAGs." >> {log}
+                mkdir -p {params.out_dir}/final_bins
+                printf "name\torigin\tis_original\toriginal_name\tcompleteness\tcontamination\tcheckm2_model\tscore\tsize\tN50\tcoding_density\tcontig_count\n" > {output.report}
+                printf "contig\tbin\n" > {output.contig2bin}
+                exit 0
+            fi
+
+            db_flag=""
+            if [ -n "{params.db_path}" ]; then
+                db_flag="--checkm2_db {params.db_path}"
+            fi
+
+            # Cleared rather than resumed. --resume reuses temporary_files/,
+            # which after a killed job may be half-written, and a retry that
+            # silently reuses a truncated DIAMOND result is worse than one
+            # that redoes the work.
+            rm -rf {params.out_dir}
+
+            binette \
+                --contig2bin_tables $tables \
+                --contigs {input.contigs} \
+                --outdir {params.out_dir} \
+                --prefix {params.prefix} \
+                --threads {threads} \
+                --contamination_weight {params.contamination_weight} \
+                --min_completeness {params.min_completeness} \
+                --max_contamination {params.max_contamination} \
+                --min_length {params.min_length} \
+                --max_length {params.max_length} \
+                $db_flag {params.extra} \
+                2> {log} 1>&2
+
+            # Binette writes no contig2bin table when it selects nothing.
+            # An absent file would fail the rule; an empty one records that
+            # the run succeeded and found nothing.
+            if [ ! -s {output.contig2bin} ]; then
+                printf "contig\tbin\n" > {output.contig2bin}
+            fi
+
+            # Self-clean. temporary_files/ holds the assembly proteins and
+            # DIAMOND output, tens of GB across an arm, and directory bloat
+            # on isilon has slowed this pipeline before.
+            rm -rf {params.out_dir}/temporary_files
+        """
+
+
+rule consolidate_binette_bins:
+    """
+    Copies Binette MAG bins into a per-sample subdirectory for downstream QC.
+    """
+    input:
+        report = "output/selected_bins/{mapper}/run_binette/{contig_sample}/final_bins_quality_reports.tsv"
+    output:
+        done = touch("output/selected_bins/{mapper}/Binette_Fastas/{contig_sample}/.done")
+    log:
+        "output/logs/selected_bins/{mapper}/consolidate_binette_bins/{contig_sample}.log"
+    retries:
+        config['retries']['consolidate_DAS_Tool_bins']
+    run:
+        import os
+        sample = wildcards.contig_sample
+        fasta_dir = join(dirname(input.report), 'final_bins')
+        output_dir = dirname(output.done)
+        os.makedirs(output_dir, exist_ok=True)
+        copied = 0
+        for file in glob(join(fasta_dir, '*.fa')):
+            copyfile(file, join(output_dir, basename(file)))
+            copied += 1
+        with open(log[0], 'w') as fh:
+            fh.write("%d bins copied from %s\n" % (copied, fasta_dir))
+
+
+rule consolidate_binette_bins_all:
+    input:
+        lambda wildcards: expand("output/selected_bins/{mapper}/Binette_Fastas/{contig_sample}/.done",
+                                 mapper=config['mappers'],
+                                 contig_sample=contig_pairings.keys())
+
+

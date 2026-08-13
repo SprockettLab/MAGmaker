@@ -15,6 +15,10 @@ checkm2_base = snakemake.params.checkm2_base
 gunc_base = snakemake.params.gunc_base
 cmseq_base = snakemake.params.cmseq_base
 assemblers = snakemake.params.assemblers
+# 'das_tool' or 'binette', and the directory that tool's selected bins are
+# in. Defaulted so an older config that predates the switch still works.
+consolidation_tool = getattr(snakemake.params, 'consolidation_tool', 'das_tool')
+selected_fastas = getattr(snakemake.params, 'selected_fastas', 'DAS_Tool_Fastas')
 
 
 def compute_mag_stats(fasta_path):
@@ -216,6 +220,57 @@ def resolve_binner(bin_name, bin_to_binner,
     return 'unknown'
 
 
+def build_binette_origin_map(bins_base, mapper, sample):
+    """Map each Binette bin name to the bin set(s) it was built from.
+
+    in : the selected_bins base, mapper and sample
+    out: {bin_name: origin string}, empty if the report is missing
+
+    Binette's final_bins_quality_reports.tsv carries an `origin` column
+    holding the names of the input bin sets a bin derives from, semicolon
+    separated. stage_binette_inputs names those sets after the binners, so
+    the values come back as metabat2/maxbin2/concoct.
+    """
+    report = os.path.join(bins_base, mapper, 'run_binette', sample,
+                          'final_bins_quality_reports.tsv')
+    if not os.path.exists(report) or os.path.getsize(report) == 0:
+        return {}
+    try:
+        df = pd.read_csv(report, sep='\t', dtype=str)
+    except Exception as e:
+        print(f"Warning: could not read {report}: {e}")
+        return {}
+    if 'name' not in df.columns or 'origin' not in df.columns:
+        print(f"Warning: {report} lacks name/origin columns")
+        return {}
+    return {str(n): str(o) for n, o in zip(df['name'], df['origin'])}
+
+
+def resolve_binette_binner(bin_name, origin_map,
+                           binners=('metabat2', 'maxbin2', 'concoct')):
+    """Turn a Binette origin into a Winning_Binner value.
+
+    Unlike DAS_Tool, Binette can return a bin that no single binner
+    produced: a hybrid built from the intersection, difference or union of
+    bins from two binners. Reporting one binner for those would be wrong,
+    so contributors are joined with '+' (e.g. `metabat2+concoct`), which
+    stays greppable while being visibly not a single binner.
+
+    Binette labels a bin it constructed with no surviving input origin as
+    'binette'; that is passed through rather than called unknown, since it
+    is a real answer about where the bin came from.
+    """
+    origin = origin_map.get(bin_name, '')
+    if not origin:
+        return 'unknown'
+    found = [b for b in binners if b in origin]
+    if found:
+        return '+'.join(found)
+    if 'binette' in origin:
+        return 'binette'
+    return 'unknown'
+
+
 def get_assembler(sample, assemblers):
     """Return whichever configured assembler produced contigs for this sample."""
     for assembler in assemblers:
@@ -244,12 +299,17 @@ all_mags = []
 
 for mapper in mappers:
     for sample in contig_samples:
-        bins_dir = os.path.join(bins_base, mapper, 'DAS_Tool_Fastas', sample)
+        bins_dir = os.path.join(bins_base, mapper, selected_fastas, sample)
         if not os.path.isdir(bins_dir):
             print(f"Warning: bins directory not found: {bins_dir}")
             continue
 
-        bin_to_binner = build_binner_map(bins_base, mapper, sample)
+        if consolidation_tool == 'binette':
+            bin_to_binner = {}
+            origin_map = build_binette_origin_map(bins_base, mapper, sample)
+        else:
+            bin_to_binner = build_binner_map(bins_base, mapper, sample)
+            origin_map = {}
         tax_map = load_gtdbtk(os.path.join(gtdbtk_base, mapper, sample))
         cmseq_map = load_cmseq(os.path.join(cmseq_base, mapper, sample))
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
@@ -258,7 +318,10 @@ for mapper in mappers:
 
         for fa in sorted(glob.glob(os.path.join(bins_dir, '*.fa'))):
             bin_name = os.path.splitext(os.path.basename(fa))[0]
-            binner = resolve_binner(bin_name, bin_to_binner)
+            if consolidation_tool == 'binette':
+                binner = resolve_binette_binner(bin_name, origin_map)
+            else:
+                binner = resolve_binner(bin_name, bin_to_binner)
 
             tax_entry = tax_map.get(
                 bin_name, (parse_gtdbtk_classification(''), '', '', ''))

@@ -5,11 +5,11 @@ from os.path import join, dirname, basename
 
 rule run_checkm2:
     input:
-        done="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done"
+        done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
     output:
         report="output/mag_qc/checkm2/{mapper}/{contig_sample}/quality_report.tsv"
     params:
-        bins_dir="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}",
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
         out_dir="output/mag_qc/checkm2/{mapper}/{contig_sample}",
         db_path=config['params']['checkm2']['db_path']
     threads:
@@ -46,11 +46,11 @@ rule run_checkm2:
 
 rule run_gunc:
     input:
-        done="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done"
+        done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
     output:
         done=touch("output/mag_qc/gunc/{mapper}/{contig_sample}/.done")
     params:
-        bins_dir="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}",
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
         out_dir="output/mag_qc/gunc/{mapper}/{contig_sample}",
         db_flag=lambda wildcards: (
             f"--db_file {config['params']['gunc']['db_path']}"
@@ -89,11 +89,11 @@ rule run_gunc:
 
 rule run_gtdbtk:
     input:
-        done="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done"
+        done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
     output:
         done=touch("output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.done")
     params:
-        bins_dir="output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}",
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
         out_dir="output/mag_qc/gtdbtk/{mapper}/{contig_sample}",
         db_path=config['params']['gtdbtk']['db_path']
     threads:
@@ -154,8 +154,15 @@ rule make_mag_summary:
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
         ),
-        das_tool=lambda wildcards: expand(
-            "output/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}_DASTool_summary.tsv",
+        # The selection tool's own report. Which one depends on
+        # params.consolidation.tool; only the active tool's outputs are
+        # required, so switching tools does not demand the other's files.
+        selection=lambda wildcards: expand(
+            ("output/selected_bins/{mapper}/run_DAS_Tool/"
+             "{contig_sample}_DASTool_summary.tsv")
+            if consolidation_tool() == 'das_tool' else
+            ("output/selected_bins/{mapper}/run_binette/{contig_sample}/"
+             "final_bins_quality_reports.tsv"),
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
         ),
@@ -177,7 +184,9 @@ rule make_mag_summary:
         cmseq_base="output/mag_qc/cmseq",
         mappers=config['mappers'],
         contig_samples=list(contig_pairings.keys()),
-        assemblers=config['assemblers']
+        assemblers=config['assemblers'],
+        consolidation_tool=consolidation_tool(),
+        selected_fastas=SELECTED_FASTAS
     conda:
         "../env/mag_qc.yaml"
     log:

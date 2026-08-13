@@ -73,7 +73,7 @@ include: "resources/snakefiles/virus.smk"
 
 rule select_bins:
     input:
-        lambda wildcards: expand("output/selected_bins/{mapper}/DAS_Tool_Fastas/{contig_sample}/.done",
+        lambda wildcards: expand("output/selected_bins/{mapper}/" + SELECTED_FASTAS + "/{contig_sample}/.done",
                                  mapper=config['mappers'],
                                  contig_sample=contig_pairings.keys())
 
