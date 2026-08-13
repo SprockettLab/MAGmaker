@@ -71,6 +71,19 @@ set-resources:
   # sample's contigs, never a non-prototype sample's reads to its own.
   cmseq_map:
     runtime: 480
+  # poly.py is a single-threaded Python pileup over the whole BAM, and
+  # those BAMs are large: a 2-sample douc arm produced a 7.9 GB one, which
+  # the 120 min default cancelled outright. This is the slowest step CMSeq
+  # adds and the one that decides whether it is affordable at all.
+  cmseq_poly:
+    runtime: 1440
+  # Building the reference is cat over a sample's MAGs, and the aggregation
+  # reads one small table, but both inherited the 120 min default and there
+  # is no reason for either to be the thing that stops an arm.
+  cmseq_reference:
+    runtime: 240
+  cmseq_aggregate:
+    runtime: 240
   # Memory for these two comes from config['mem_mb'] (read by the rules),
   # so set only runtime here to avoid overriding the config-driven mem.
   run_checkm2:
