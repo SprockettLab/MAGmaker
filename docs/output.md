@@ -122,3 +122,40 @@ The `rename_mags` rule clears `renamed_mags/` before copying so stale files from
 ---
 
 ← [Back to README](../README.md)
+
+## GTDB-Tk stages
+
+`run_gtdbtk` runs `classify_wf` by default. Two flags shorten it:
+
+| flag | stages run | taxonomy columns | `MSA_Percent` | memory reserved |
+|---|---|---|---|---|
+| *(none)* | identify, align, classify | populated | populated | 128-320 GB |
+| `--skip-gtdbtk-classify` | identify, align | NA | populated | 32-64 GB |
+| `--skip-gtdbtk` | none | NA | NA | rule does not run |
+
+Nearly all of GTDB-Tk's cost is `classify`, which runs pplacer. GTDB-Tk's
+documentation puts the bacterial requirement at about 140 GB and attributes
+it there. `identify` and `align` do not run pplacer, so skipping classify
+changes which nodes the rule can be scheduled on rather than merely
+trimming its runtime.
+
+`MSA_Percent` survives that, which is the point of the flag. GTDB-Tk defines
+it as "the percentage of the MSA spanned by the genome (i.e. percentage of
+columns with an amino acid)", and `align` writes that alignment as
+`gtdbtk.<domain>.user_msa.fasta.gz`. `make_mag_summary` counts non-gap
+columns there, so the value is GTDB-Tk's own number rather than an
+approximation of it. An analysis that filters genomes on how much of the
+marker alignment they fill, but takes taxonomy from elsewhere, never needs
+`classify` at all.
+
+The align-only path passes `--min_perc_aa 0`. GTDB-Tk's default of 10 drops
+genomes below that threshold into `filtered.tsv` instead of reporting a low
+value for them, and a genome absent from the output is not the same as one
+measured at 4%.
+
+Two consequences worth knowing. Under `classify_wf` the align step uses the
+default floor of 10, so genomes below it have no `MSA_Percent` in a full
+run but do have one in an align-only run. And because `.done` is written
+either way, adding classification to a finished align-only run means
+deleting `output/mag_qc/gtdbtk/*/*/.done` first; `classify_wf` then redoes
+identify and align, which is wasteful but correct.

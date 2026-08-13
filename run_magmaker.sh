@@ -27,6 +27,8 @@
 #       --skip-cmseq                            # no strain heterogeneity
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --binette                               # Binette instead of DAS_Tool
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --skip-gtdbtk-classify                  # MSA_Percent, no pplacer
 #
 # --binette / --das-tool choose which tool reconciles the three per-binner
 # bin sets into one set of MAGs, overriding params.consolidation.tool for
@@ -64,6 +66,14 @@ for arg in "$@"; do
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
+        # GTDB-Tk runs identify, align and classify. Nearly all of the cost
+        # is classify, which runs pplacer and is why this rule reserves
+        # 128-320 GB. --skip-gtdbtk-classify stops after align, which still
+        # produces MSA_Percent -- the share of the marker alignment a genome
+        # fills, and what decides whether it can be placed in a tree -- but
+        # leaves the taxonomy columns NA. --skip-gtdbtk drops both.
+        --skip-gtdbtk)         SKIP_CONFIG+=("skip_gtdbtk=True") ;;
+        --skip-gtdbtk-classify) SKIP_CONFIG+=("skip_gtdbtk_classify=True") ;;
         # Which tool reconciles the per-binner bin sets. Given here rather
         # than only in the config file so one arm can be run both ways
         # without editing a tracked file between the two.

@@ -216,6 +216,11 @@ params:
   metabat2:
     extra: '--verbose'
     min_contig_length: 1500   # should be >= 1500
+    # MetaBAT2's own default is 0, which its source replaces with time(0).
+    # Unseeded, two runs on identical input are not expected to produce the
+    # same bins. Fixing it is what makes a run reproducible; the value
+    # itself carries no meaning, and changing it changes the binning.
+    seed: 8675309
   maxbin2:
     prob_threshold: 0.8
     extra: ''
@@ -304,6 +309,12 @@ params:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gunc/gunc_db_progenomes2.1.dmnd"  # "" to auto-download
   gtdbtk:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/gtdbtk/release232"  # "" and see docs/databases.md
+    # Only used by --skip-gtdbtk-classify, which runs `align` directly.
+    # GTDB-Tk's own default is 10, and it DROPS genomes below it into
+    # filtered.tsv rather than reporting a low value. A genome missing from
+    # the output is not the same as one measured at 4%, so 0 keeps every
+    # genome and lets the analysis pick its own floor afterwards.
+    min_perc_aa: 0
 
   # ── 8  VIRAL / PLASMID ─────────────────────────────────────────────────────
 
@@ -405,6 +416,14 @@ mem_mb:
   # running slower.
   gtdbtk: 128000        # first attempt
   gtdbtk_max: 320000    # ceiling on retry (2nd attempt asks 256000)
+  # Used instead of the two above when --skip-gtdbtk-classify is given.
+  # Everything above is sized for pplacer, which that flag does not run;
+  # identify and align are gene calling, an HMM search and an alignment.
+  # This is the whole point of the flag: 128-320 GB confines the rule to
+  # the largest nodes and serialises it, and without classify none of that
+  # is needed.
+  gtdbtk_align: 32000
+  gtdbtk_align_max: 64000
   #
   # The rules below use the same escalate-on-retry scheme (mem_escalate in
   # common.smk): the value here is the FIRST attempt, <key>_max is the
