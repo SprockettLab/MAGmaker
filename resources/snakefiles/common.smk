@@ -292,6 +292,48 @@ def consolidation_tool():
 
 
 SELECTED_FASTAS = CONSOLIDATION_TOOLS[consolidation_tool()]
+
+
+def config_flag(name):
+    """A --config boolean, tolerant of True/true/1/yes.
+
+    Snakemake hands --config values over either parsed or as bare strings
+    depending on how they were written, so both are accepted."""
+    return str(config.get(name, "")).strip().lower() in ("true", "1", "yes")
+
+
+def gtdbtk_mode():
+    """in : nothing; reads config
+       out: 'full', 'align_only' or 'none'
+
+    GTDB-Tk runs in three stages. `identify` calls genes and searches the
+    marker HMMs, `align` builds the concatenated alignment, and `classify`
+    places each genome in the reference tree with pplacer.
+
+    Nearly all of the cost is the last stage. GTDB-Tk's documentation puts
+    the bacterial memory requirement at about 140 GB and attributes it to
+    pplacer; this pipeline reserves 128 GB on the first attempt and
+    escalates to 320 GB. identify and align do not run pplacer at all, so
+    stopping before classify is a change of memory class rather than a
+    tuning change: a rule only the largest nodes can schedule becomes one
+    that runs anywhere.
+
+    What align produces is the alignment itself, and MSA_Percent -- the
+    share of the concatenated alignment a genome fills with residues -- is
+    recoverable from it exactly. That is the quantity that decides whether
+    a genome can be placed in a tree, so an analysis that filters on
+    MSA_Percent but takes its taxonomy from elsewhere never needs classify.
+
+      full        identify + align + classify. The default, unchanged.
+      align_only  --skip-gtdbtk-classify. MSA_Percent is populated,
+                  taxonomy columns are NA, pplacer never runs.
+      none        --skip-gtdbtk. Both are NA.
+    """
+    if config_flag('skip_gtdbtk'):
+        return 'none'
+    if config_flag('skip_gtdbtk_classify'):
+        return 'align_only'
+    return 'full'
 seqruns = metadata_table.index
 reads = config["reads"]
 

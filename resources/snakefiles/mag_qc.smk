@@ -88,6 +88,22 @@ rule run_gunc:
 
 
 rule run_gtdbtk:
+    """
+    Places MAGs in GTDB, and measures how much of the marker alignment each
+    one fills.
+
+    Runs `classify_wf` unchanged by default. With --skip-gtdbtk-classify it
+    runs `identify` and `align` only and stops before pplacer, which is
+    where nearly all of GTDB-Tk's memory and runtime live. See
+    gtdbtk_mode() in common.smk for why that is worth doing.
+
+    Kept as ONE rule rather than split into three. Three rules would need
+    per-stage sentinel files that no existing run has, and a missing input
+    forces Snakemake to rebuild the chain that produces it -- so splitting
+    would re-run GTDB-Tk across every finished arm to materialise files
+    whose contents are already on disk. The memory saving, which is the
+    actual point, is available without paying that.
+    """
     input:
         done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
     output:
@@ -95,7 +111,13 @@ rule run_gtdbtk:
     params:
         bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
         out_dir="output/mag_qc/gtdbtk/{mapper}/{contig_sample}",
-        db_path=config['params']['gtdbtk']['db_path']
+        db_path=config['params']['gtdbtk']['db_path'],
+        mode=gtdbtk_mode(),
+        # align drops genomes below --min_perc_aa into filtered.tsv rather
+        # than reporting a low value for them, and a genome missing from the
+        # output is not the same as a genome measured at 4%. Zero keeps
+        # every genome and lets the analysis choose its own floor.
+        min_perc_aa=config['params']['gtdbtk'].get('min_perc_aa', 0)
     threads:
         config['threads']['gtdbtk']
     retries:
@@ -106,9 +128,17 @@ rule run_gtdbtk:
         # nodes. Start at the value that suits most samples and escalate on
         # retry, capped by gtdbtk_max. The .get keeps configs predating
         # gtdbtk_max working.
-        mem_mb=lambda wildcards, attempt: min(
-            config['mem_mb'].get('gtdbtk_max', config['mem_mb']['gtdbtk']),
-            config['mem_mb']['gtdbtk'] * attempt
+        #
+        # Without classify there is no pplacer, so the whole escalation is
+        # beside the point: identify and align are gene calling, an HMM
+        # search and an alignment, and they fit in a fraction of it.
+        mem_mb=lambda wildcards, attempt: (
+            min(config['mem_mb'].get('gtdbtk_align_max',
+                                     config['mem_mb'].get('gtdbtk_align', 32000) * 2),
+                config['mem_mb'].get('gtdbtk_align', 32000) * attempt)
+            if gtdbtk_mode() == 'align_only' else
+            min(config['mem_mb'].get('gtdbtk_max', config['mem_mb']['gtdbtk']),
+                config['mem_mb']['gtdbtk'] * attempt)
         )
     conda:
         "../env/gtdbtk.yaml"
@@ -120,6 +150,21 @@ rule run_gtdbtk:
         """
         if ! ls {params.bins_dir}/*.fa 2>/dev/null 1>/dev/null; then
             echo "No bins in {params.bins_dir}; skipping gtdbtk." >> {log}
+        elif [ "{params.mode}" = "align_only" ]; then
+            export GTDBTK_DATA_PATH="{params.db_path}"
+            echo "--skip-gtdbtk-classify: running identify and align only; pplacer will not run." >> {log}
+            gtdbtk identify \
+                --genome_dir {params.bins_dir} \
+                --out_dir {params.out_dir} \
+                --cpus {threads} \
+                --extension fa \
+                2>> {log} 1>&2
+            gtdbtk align \
+                --identify_dir {params.out_dir} \
+                --out_dir {params.out_dir} \
+                --cpus {threads} \
+                --min_perc_aa {params.min_perc_aa} \
+                2>> {log} 1>&2
         else
             export GTDBTK_DATA_PATH="{params.db_path}"
             gtdbtk classify_wf \
@@ -149,11 +194,14 @@ rule make_mag_summary:
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
         ),
-        gtdbtk=lambda wildcards: expand(
+        # Empty when --skip-gtdbtk was given, in which case the taxonomy and
+        # MSA_Percent columns are written as NA rather than omitted, so a run
+        # without GTDB-Tk stays distinguishable from a MAG it could not place.
+        gtdbtk=lambda wildcards: (expand(
             "output/mag_qc/gtdbtk/{mapper}/{contig_sample}/.done",
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
-        ),
+        ) if gtdbtk_mode() != 'none' else []),
         # The selection tool's own report. Which one depends on
         # params.consolidation.tool; only the active tool's outputs are
         # required, so switching tools does not demand the other's files.

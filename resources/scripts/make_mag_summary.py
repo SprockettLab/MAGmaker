@@ -1,6 +1,7 @@
 import os
 import sys
 import glob
+import gzip
 import pandas as pd
 
 log_path = str(snakemake.log[0])
@@ -114,6 +115,72 @@ def load_gtdbtk(gtdbtk_dir):
                     '' if pd.isna(warn) else str(warn),
                 )
     return tax_map
+
+
+def load_msa_percent(gtdbtk_dir):
+    """Recover msa_percent from the alignment `align` writes.
+
+    in : a sample's gtdbtk output directory
+    out: {genome: msa_percent as a float}, empty if no alignment is there
+
+    GTDB-Tk defines the column as "the percentage of the MSA spanned by the
+    genome (i.e. percentage of columns with an amino acid)", and `align`
+    writes exactly that alignment as gtdbtk.<domain>.user_msa.fasta[.gz].
+    Counting non-gap columns therefore reproduces GTDB-Tk's own number
+    rather than approximating it.
+
+    This exists so MSA_Percent survives --skip-gtdbtk-classify. classify is
+    where pplacer and the ~140 GB memory requirement live, and it is also
+    what writes summary.tsv, so without this the one column that decides
+    whether a genome can be placed in a tree would be the one thing lost by
+    skipping the step that places it.
+
+    A genome present in the bin set but absent from the alignment is not
+    recorded here. Whether that means "filtered by --min_perc_aa" or "no
+    markers found" depends on the run, and guessing between them in a
+    column that reads as a measurement would be worse than leaving it
+    empty.
+    """
+    msa_map = {}
+    align_dir = os.path.join(gtdbtk_dir, 'align')
+    if not os.path.isdir(align_dir):
+        return msa_map
+
+    for db_type in ('bac120', 'ar53'):
+        for suffix, opener in (('.gz', gzip.open), ('', open)):
+            path = os.path.join(
+                align_dir, f'gtdbtk.{db_type}.user_msa.fasta{suffix}')
+            if not os.path.exists(path):
+                continue
+            try:
+                with opener(path, 'rt') as fh:
+                    name, seq = None, []
+                    for line in fh:
+                        line = line.strip()
+                        if line.startswith('>'):
+                            if name is not None:
+                                msa_map[name] = _percent_aligned(''.join(seq))
+                            # GTDB-Tk writes the genome id as the whole
+                            # header, but split defensively in case a
+                            # description is ever appended.
+                            name = line[1:].split()[0] if len(line) > 1 else ''
+                            seq = []
+                        elif line:
+                            seq.append(line)
+                    if name:
+                        msa_map[name] = _percent_aligned(''.join(seq))
+            except Exception as e:
+                print(f"Warning: could not read {path}: {e}")
+            break   # one of .gz / plain per domain, whichever exists
+    return msa_map
+
+
+def _percent_aligned(sequence):
+    """Share of alignment columns this genome fills with a residue."""
+    if not sequence:
+        return ''
+    gaps = sequence.count('-') + sequence.count('.')
+    return round(100.0 * (len(sequence) - gaps) / len(sequence), 2)
 
 
 def load_cmseq(cmseq_dir):
@@ -311,6 +378,9 @@ for mapper in mappers:
             bin_to_binner = build_binner_map(bins_base, mapper, sample)
             origin_map = {}
         tax_map = load_gtdbtk(os.path.join(gtdbtk_base, mapper, sample))
+        # Fallback for MSA_Percent when classify did not run and so wrote no
+        # summary.tsv to read it from.
+        msa_map = load_msa_percent(os.path.join(gtdbtk_base, mapper, sample))
         cmseq_map = load_cmseq(os.path.join(cmseq_base, mapper, sample))
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
         gunc_map = load_gunc(os.path.join(gunc_base, mapper, sample))
@@ -326,6 +396,8 @@ for mapper in mappers:
             tax_entry = tax_map.get(
                 bin_name, (parse_gtdbtk_classification(''), '', '', ''))
             tax_dict, full_classification, msa_percent, gtdbtk_warnings = tax_entry
+            if msa_percent == '':
+                msa_percent = msa_map.get(bin_name, '')
             tax_label = get_taxonomic_label(tax_dict)
 
             stats = compute_mag_stats(fa)

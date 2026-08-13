@@ -51,6 +51,10 @@ rule run_metabat2:
     params:
         basename = "output/binning/metabat2/{mapper}/run_metabat2/{contig_sample}/{contig_sample}_bin",
         min_contig_length = config['params']['metabat2']['min_contig_length'],
+        # MetaBAT2 defaults --seed to 0, which its source then replaces with
+        # time(0), so an unseeded run is not reproducible. Passed explicitly
+        # so two runs of this pipeline on the same data agree.
+        seed = config['params']['metabat2'].get('seed', 8675309),
         extra = config['params']['metabat2']['extra']  # optional parameters
     threads:
         config['threads']['run_metabat2']
@@ -67,6 +71,7 @@ rule run_metabat2:
             --outFile {params.basename} \
             --abdFile {input.coverage_table} \
             --minContig {params.min_contig_length} \
+            --seed {params.seed} \
             2> {log} 1>&2
         """
 
