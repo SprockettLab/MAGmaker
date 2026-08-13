@@ -23,12 +23,6 @@
 # costs.
 
 
-def cmseq_enabled():
-    """CMSeq runs unless --skip-cmseq was given."""
-    return str(config.get('skip_cmseq', '')).strip().lower() not in (
-        'true', '1', 'yes')
-
-
 rule cmseq_reference:
     """One FASTA per sample holding that sample's selected MAGs.
 
