@@ -100,15 +100,9 @@ rule run_DAS_Tool:
     Selects bins using DAS_Tool
     """
     input:
-        metabat2 = lambda wildcards: expand("output/selected_bins/metabat2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
-                mapper = config['mappers'],
-                contig_sample = wildcards.contig_sample),
-        maxbin2 = lambda wildcards: expand("output/selected_bins/maxbin2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
-                mapper = config['mappers'],
-                contig_sample = wildcards.contig_sample),
-        concoct = lambda wildcards: expand("output/selected_bins/concoct/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
-                mapper = config['mappers'],
-                contig_sample = wildcards.contig_sample),
+        # Every binner listed in `binners:`, rather than a fixed three, so a
+        # fourth is a config change instead of an edit here.
+        tables = binner_tables,
         contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
                     assembler = config['assemblers'],
                     contig_sample = wildcards.contig_sample)
@@ -125,16 +119,15 @@ rule run_DAS_Tool:
         # empty bin set aborts the run for every other binner too. Filtering
         # here means one binner declining costs that binner's contribution
         # rather than the whole sample.
+        # Labels are read back out of each path rather than paired with it
+        # by position. Pairing two lists positionally breaks silently the
+        # moment one binner declines a sample and the lists stop lining up,
+        # which mislabels every bin set after the gap.
         bin_sets = lambda wildcards, input: ",".join(
-            path for path, label in zip(
-                [input.metabat2[0], input.maxbin2[0], input.concoct[0]],
-                ["metabat2", "maxbin2", "concoct"])
-            if os.path.getsize(path) > 0),
+            p for p in input.tables if os.path.getsize(p) > 0),
         bin_labels = lambda wildcards, input: ",".join(
-            label for path, label in zip(
-                [input.metabat2[0], input.maxbin2[0], input.concoct[0]],
-                ["metabat2", "maxbin2", "concoct"])
-            if os.path.getsize(path) > 0)
+            binner_of_table(p) for p in input.tables
+            if os.path.getsize(p) > 0)
     conda:
         "../env/selected_bins.yaml"
     threads:
@@ -217,7 +210,7 @@ rule run_DAS_Tool:
                 # bins. Their assemblies were not weak; median N50 was 16%
                 # HIGHER than the samples that succeeded.
                 if grep -qE "No SCGs detected for SCG set: bacteria" {log} \
-                   && [ -s "$(echo {input.metabat2} | cut -d' ' -f1)" ]; then
+                   && [ -s "$(echo {input.tables} | cut -d' ' -f1)" ]; then
                     echo "Bacterial SCG set empty despite non-empty input bins: DAS_Tool's SCG search failed rather than the sample being empty. Failing for retry." >> {log}
                     exit 1
                 fi
@@ -298,15 +291,7 @@ rule stage_binette_inputs:
     with no bins in it.
     """
     input:
-        metabat2 = lambda wildcards: expand("output/selected_bins/metabat2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
-                mapper = config['mappers'],
-                contig_sample = wildcards.contig_sample),
-        maxbin2 = lambda wildcards: expand("output/selected_bins/maxbin2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
-                mapper = config['mappers'],
-                contig_sample = wildcards.contig_sample),
-        concoct = lambda wildcards: expand("output/selected_bins/concoct/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
-                mapper = config['mappers'],
-                contig_sample = wildcards.contig_sample)
+        tables = binner_tables
     output:
         staged = directory("output/selected_bins/{mapper}/binette_input/{contig_sample}")
     log:
@@ -317,10 +302,8 @@ rule stage_binette_inputs:
         os.makedirs(output.staged, exist_ok=True)
         staged = []
         with open(log[0], 'w') as fh:
-            for label, paths in (('metabat2', input.metabat2),
-                                 ('maxbin2', input.maxbin2),
-                                 ('concoct', input.concoct)):
-                path = paths[0]
+            for path in input.tables:
+                label = binner_of_table(path)
                 if os.path.getsize(path) == 0:
                     fh.write("%s produced no bins; not staged\n" % label)
                     continue
