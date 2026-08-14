@@ -486,3 +486,20 @@ rule semibin2_Fasta_to_Scaffolds2Bin:
                 -e fa > {output.scaffolds2bin} 2> {log}
             fi
         """
+
+
+rule semibin2_scaffolds2bin_all:
+    """
+    Every sample's SemiBin2 contig-to-bin table.
+
+    Declares no output of its own, so it always runs and forces its inputs
+    to be built. Asking for a rule whose outputs already exist collapses
+    the DAG to "Nothing to be done" and exits 0 having done nothing, which
+    reads as success -- the same trap that silently produced no Binette
+    selection on a finished arm.
+    """
+    input:
+        lambda wildcards: expand(
+            "output/selected_bins/semibin2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv",
+            mapper=config['mappers'],
+            contig_sample=contig_pairings.keys())
