@@ -64,6 +64,9 @@ rule cmseq_map:
     output:
         bam=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/reads.bam"),
         bai=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/reads.bam.bai")
+    params:
+        min_mapq=config['params']['cmseq'].get('min_mapq', 20),
+        min_identity=config['params']['cmseq'].get('min_read_identity', 0.95)
     threads:
         config['threads'].get('cmseq', 8)
     conda:
@@ -89,10 +92,54 @@ rule cmseq_map:
             exit 0
         fi
         MEM_PER_THREAD=$(( {resources.mem_mb} * 6 / 10 / {threads} ))
+
+        # Two filters, both aimed at reads that are not from the organism
+        # whose MAG they land on. Without them, strain heterogeneity partly
+        # measures how much of the community failed to bin: every read in
+        # the sample is mapped to that sample's MAGs, so reads from species
+        # that were never binned pile onto the nearest available reference
+        # and read out as polymorphism. Measured across five arms before
+        # this was added, strain heterogeneity ranked exactly inversely to
+        # how well each arm's MAGs were covered, and every within-arm rank
+        # correlation was negative, which is that mechanism's signature.
+        #
+        # -q {params.min_mapq} drops reads that map about as well somewhere
+        # else in the reference. The reference is a concatenation of the
+        # sample's own MAGs, so this is what removes ambiguity BETWEEN this
+        # sample's genomes.
+        #
+        # The NM expression keeps only reads aligning at roughly
+        # {params.min_identity} identity or better. That is what removes
+        # reads from relatives with no MAG of their own, which map uniquely
+        # -- so MAPQ cannot catch them -- but divergently. Within-species
+        # strain variation sits above 95% by definition, so a filter there
+        # removes cross-species reads while keeping the signal being
+        # measured.
+        #
+        # -F 0x904 drops unmapped, secondary and supplementary alignments.
+        # Unmapped reads are excluded FIRST because they carry no NM tag and
+        # the identity expression below has nothing to evaluate on them;
+        # secondary and supplementary would otherwise let one read vote at
+        # several positions.
+        #
+        # The -e expression needs samtools 1.12 or newer. An older samtools
+        # fails here loudly rather than silently skipping the filter, which
+        # is the right way round: an unfiltered run looks like a valid
+        # result and would be indistinguishable from a filtered one in the
+        # output.
+        MAX_NM=$(python3 -c "print(1 - {params.min_identity})")
         minimap2 -ax sr -t {threads} {input.ref} {input.reads} 2> {log} \
+            | samtools view -h -u -F 0x904 -q {params.min_mapq} \
+                -e "[NM] <= ${{MAX_NM}} * qlen" - 2>> {log} \
             | samtools sort -m ${{MEM_PER_THREAD}}M -@ {threads} \
                 -o {output.bam} - 2>> {log}
         samtools index -@ {threads} {output.bam} 2>> {log}
+
+        # Report what the filters cost, so a run that removed most of its
+        # reads is visible rather than silently producing clean-looking
+        # genomes. A MAG whose reads were nearly all filtered will report
+        # low heterogeneity for want of evidence, not for want of strains.
+        echo "reads retained after filtering: $(samtools view -c {output.bam} 2>/dev/null || echo 0)" >> {log}
         """
 
 
