@@ -142,14 +142,34 @@ rule cmseq_map:
         # secondary and supplementary would otherwise let one read vote at
         # several positions.
         #
-        # The -e expression needs samtools 1.12 or newer. An older samtools
-        # fails here loudly rather than silently skipping the filter, which
-        # is the right way round: an unfiltered run looks like a valid
-        # result and would be indistinguishable from a filtered one in the
-        # output.
+        # The identity filter is applied with awk rather than samtools'
+        # -e filter expression. mapping.yaml pins tbb, libzlib and minimap2
+        # to old versions, which drags conda down to samtools 1.6 or 1.9 --
+        # and -e did not exist until 1.12. An older samtools does not reject
+        # the option, it treats the expression as a positional FILENAME and
+        # dies with "failed to open ... for reading", which points nowhere
+        # near the real cause. Loosening the pins to get a newer samtools
+        # would rebuild an environment used by the main mapping step across
+        # every arm, and concurrent rebuilds of a shared environment have
+        # already corrupted the package cache on this cluster once.
+        #
+        # awk needs no version of anything. Flag and MAPQ filtering stay in
+        # samtools, where they work in every release.
+        #
+        # A read with no NM tag is dropped, since its identity cannot be
+        # judged. After -F 0x904 every surviving record is a primary
+        # alignment, and minimap2 emits NM for those, so in practice this
+        # removes nothing.
         minimap2 -ax sr -t {threads} {input.ref} {input.reads} 2> {log} \
-            | samtools view -h -u -F 0x904 -q {params.min_mapq} \
-                -e "[NM] <= {params.max_nm_frac} * qlen" - 2>> {log} \
+            | samtools view -h -F 0x904 -q {params.min_mapq} - 2>> {log} \
+            | awk -v maxfrac={params.max_nm_frac} '
+                /^@/ {{ print; next }}
+                {{
+                    nm = -1
+                    for (i = 12; i <= NF; i++)
+                        if ($i ~ /^NM:i:/) {{ split($i, a, ":"); nm = a[3] + 0; break }}
+                    if (nm >= 0 && nm <= maxfrac * length($10)) print
+                }}' FS='\t' OFS='\t' \
             | samtools sort -m ${{MEM_PER_THREAD}}M -@ {threads} \
                 -o {output.bam} - 2>> {log}
         samtools index -@ {threads} {output.bam} 2>> {log}
