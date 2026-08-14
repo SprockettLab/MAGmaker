@@ -524,6 +524,7 @@ retries:
   run_binette: 2
   run_semibin2: 2
   run_gunc: 4
+  run_checkm2: 3
   # Escalates memory rather than just re-trying: run_gtdbtk requests
   # mem_mb.gtdbtk * attempt, capped at mem_mb.gtdbtk_max. Two retries reach
   # the ceiling, which is enough for every sample seen so far.
