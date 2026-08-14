@@ -75,7 +75,18 @@ rule cmseq_map:
             config['params']['cmseq'].get('min_mapq', 20)),
         min_identity=config.get(
             'cmseq_min_read_identity',
-            config['params']['cmseq'].get('min_read_identity', 0.95))
+            config['params']['cmseq'].get('min_read_identity', 0.95)),
+        # The mismatch budget as a fraction of read length, computed HERE in
+        # Python rather than in the shell. The shell version called python3,
+        # which is not guaranteed to be in mapping.yaml -- that environment
+        # exists to provide minimap2 and samtools. When it is absent the
+        # substitution yields an empty string and samtools receives
+        # `[NM] <=  * qlen`, which is a filter-expression syntax error rather
+        # than an unfiltered run, so it fails loudly, but it fails for a
+        # reason that has nothing to do with the data.
+        max_nm_frac=lambda wildcards: 1.0 - float(config.get(
+            'cmseq_min_read_identity',
+            config['params']['cmseq'].get('min_read_identity', 0.95)))
     threads:
         config['threads'].get('cmseq', 8)
     conda:
@@ -136,10 +147,9 @@ rule cmseq_map:
         # is the right way round: an unfiltered run looks like a valid
         # result and would be indistinguishable from a filtered one in the
         # output.
-        MAX_NM=$(python3 -c "print(1 - {params.min_identity})")
         minimap2 -ax sr -t {threads} {input.ref} {input.reads} 2> {log} \
             | samtools view -h -u -F 0x904 -q {params.min_mapq} \
-                -e "[NM] <= ${{MAX_NM}} * qlen" - 2>> {log} \
+                -e "[NM] <= {params.max_nm_frac} * qlen" - 2>> {log} \
             | samtools sort -m ${{MEM_PER_THREAD}}M -@ {threads} \
                 -o {output.bam} - 2>> {log}
         samtools index -@ {threads} {output.bam} 2>> {log}
