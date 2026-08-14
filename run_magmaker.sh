@@ -29,6 +29,8 @@
 #       --binette                               # Binette instead of DAS_Tool
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-gtdbtk-classify                  # MSA_Percent, no pplacer
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --binners=concoct,metabat2,maxbin2      # which binners run
 #
 # --binette / --das-tool choose which tool reconciles the three per-binner
 # bin sets into one set of MAGs, overriding params.consolidation.tool for
@@ -91,6 +93,16 @@ for arg in "$@"; do
         # without editing a tracked file between the two.
         --binette)        SKIP_CONFIG+=("consolidation_tool=binette") ;;
         --das-tool)       SKIP_CONFIG+=("consolidation_tool=das_tool") ;;
+        # Which binners run, overriding `binners:` for this run only.
+        # Written with = rather than a separate value so the argument loop
+        # stays a single pass; a flag that consumes the NEXT argument would
+        # have to track state across iterations.
+        #
+        # This exists because --config is refused here: Snakemake keeps only
+        # the last --config on a command line, so a caller-supplied one
+        # would silently discard everything this script sets. Comparing
+        # three binners against four needs a supported way to say so.
+        --binners=*)      SKIP_CONFIG+=("binners=[${arg#*=}]") ;;
         *)                PASSTHRU+=("${arg}") ;;
     esac
 done
