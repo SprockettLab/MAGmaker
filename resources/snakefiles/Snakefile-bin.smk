@@ -78,16 +78,12 @@ rule select_bins:
                                  contig_sample=contig_pairings.keys())
 
 rule bin_all:
+    # Only the binners listed in `binners:`. That key existed and was read
+    # by nothing: this target asked for all three unconditionally, and both
+    # consolidation tools took their bin sets from a hardcoded list, so
+    # removing a binner from the config changed nothing at all.
     input:
-        expand("output/binning/metabat2/{mapper}/run_metabat2/{contig_sample}/",
-               mapper=config['mappers'],
-               contig_sample=contig_pairings.keys()),
-        expand("output/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}/",
-               mapper=config['mappers'],
-               contig_sample=contig_pairings.keys()),
-        expand("output/binning/concoct/{mapper}/extract_fasta_bins/{contig_sample}_bins/",
-               mapper=config['mappers'],
-               contig_sample=contig_pairings.keys())
+        lambda wildcards: binner_bin_dirs(list(contig_pairings.keys()))
 
 rule map_all:
     input:

@@ -33,6 +33,7 @@
 # keeps single-end outputs from ever colliding with paired-end ones.
 # =============================================================================
 
+import os
 import sys
 import pandas as pd
 
@@ -292,6 +293,88 @@ def consolidation_tool():
 
 
 SELECTED_FASTAS = CONSOLIDATION_TOOLS[consolidation_tool()]
+
+# Binners whose bins can be handed to a consolidation tool, in a fixed
+# order so labels are stable between runs. Which of them actually run is
+# `binners:` in the config; this is the set the pipeline knows how to wire.
+KNOWN_BINNERS = ['metabat2', 'maxbin2', 'concoct', 'semibin2']
+
+
+def enabled_binners():
+    """The configured binners, in KNOWN_BINNERS order.
+
+    Ordered here rather than taken as the config lists them, so that two
+    runs whose config differs only in the order of `binners:` produce the
+    same labels in the same order.
+    """
+    configured = config.get('binners', []) or []
+    if isinstance(configured, str):
+        configured = [configured]
+    # A name this pipeline does not know is a hard error, not a binner
+    # quietly left out. Silently dropping `maxbinn2` would run three binners
+    # where four were asked for, produce a smaller MAG set, and say nothing
+    # -- and the result would look like a real answer.
+    unknown = [b for b in configured if b not in KNOWN_BINNERS]
+    if unknown:
+        _fail(
+            "config `binners:` names binner(s) this pipeline does not know:\n"
+            "  %s\n\n"
+            "Known binners: %s\n\n"
+            "Adding a new one means a rule producing\n"
+            "  output/selected_bins/<binner>/<mapper>/scaffolds2bin/"
+            "<sample>_scaffolds2bin.tsv\n"
+            "and an entry in KNOWN_BINNERS and BINNER_BIN_DIRS in common.smk."
+            % (", ".join(unknown), ", ".join(KNOWN_BINNERS)))
+    if not configured:
+        _fail("config `binners:` is empty; at least one binner is required.")
+    return [b for b in KNOWN_BINNERS if b in configured]
+
+
+def binner_of_table(path):
+    """in : a .../selected_bins/<binner>/<mapper>/scaffolds2bin/... path
+       out: the binner name
+
+    Read back out of the path rather than carried alongside it. Both
+    consolidation tools need bin sets paired with their labels, and pairing
+    two lists by position breaks silently the moment one binner declines a
+    sample and the lists stop lining up.
+    """
+    parts = os.path.normpath(path).split(os.sep)
+    try:
+        return parts[parts.index('selected_bins') + 1]
+    except (ValueError, IndexError):
+        return 'unknown'
+
+
+def binner_tables(wildcards):
+    """Every enabled binner's contig-to-bin table for one sample."""
+    return expand(
+        "output/selected_bins/{binner}/{mapper}/scaffolds2bin/"
+        "{contig_sample}_scaffolds2bin.tsv",
+        binner=enabled_binners(),
+        mapper=config['mappers'],
+        contig_sample=wildcards.contig_sample)
+
+
+# Where each binner leaves its bins. CONCOCT's differs because its clusters
+# are written as a table and turned into FASTAs by a later rule, so the
+# directory that holds bins is not the one named after the binner.
+BINNER_BIN_DIRS = {
+    'metabat2': "output/binning/metabat2/{mapper}/run_metabat2/{contig_sample}/",
+    'maxbin2':  "output/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}/",
+    'concoct':  "output/binning/concoct/{mapper}/extract_fasta_bins/{contig_sample}_bins/",
+    'semibin2': "output/binning/semibin2/{mapper}/run_semibin2/{contig_sample}/",
+}
+
+
+def binner_bin_dirs(samples):
+    """Bin directories for every enabled binner, across samples."""
+    out = []
+    for b in enabled_binners():
+        out += expand(BINNER_BIN_DIRS[b],
+                      mapper=config['mappers'], contig_sample=samples)
+    return out
+
 
 
 def config_flag(name):
