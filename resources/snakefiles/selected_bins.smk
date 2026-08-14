@@ -453,3 +453,36 @@ rule consolidate_binette_bins_all:
                                  contig_sample=contig_pairings.keys())
 
 
+
+
+rule semibin2_Fasta_to_Scaffolds2Bin:
+    """
+    Contig-to-bin table for SemiBin2's bins, in the format both DAS_Tool and
+    Binette consume.
+    """
+    input:
+        bins = lambda wildcards: expand("output/binning/semibin2/{mapper}/run_semibin2/{contig_sample}/",
+                mapper = config['mappers'],
+                contig_sample = wildcards.contig_sample)
+    output:
+        scaffolds2bin="output/selected_bins/semibin2/{mapper}/scaffolds2bin/{contig_sample}_scaffolds2bin.tsv"
+    conda:
+        "../env/selected_bins.yaml"
+    benchmark:
+        "output/benchmarks/selected_bins/semibin2/{mapper}/scaffolds2bin/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/selected_bins/semibin2/{mapper}/scaffolds2bin/{contig_sample}.log"
+    shell:
+        """
+            # A sample where SemiBin2 produced nothing gets an empty table
+            # rather than a failure. Both consolidation tools already treat
+            # an empty bin set as a binner declining the sample.
+            if ! ls {input.bins}/*.fa 2>/dev/null 1>/dev/null; then
+                echo "no SemiBin2 bins for this sample" > {log}
+                : > {output.scaffolds2bin}
+            else
+                Fasta_to_Contig2Bin.sh \
+                -i {input.bins} \
+                -e fa > {output.scaffolds2bin} 2> {log}
+            fi
+        """

@@ -54,7 +54,8 @@ rule run_metabat2:
         # MetaBAT2 defaults --seed to 0, which its source then replaces with
         # time(0), so an unseeded run is not reproducible. Passed explicitly
         # so two runs of this pipeline on the same data agree.
-        seed = config['params']['metabat2'].get('seed', 8675309),
+        seed = config['params']['metabat2'].get(
+            'seed', config.get('seed', 8675309)),
         extra = config['params']['metabat2']['extra']  # optional parameters
     threads:
         config['threads']['run_metabat2']
@@ -305,4 +306,116 @@ rule extract_fasta_bins:
             {input.clustering_merged} \
             --output_path {output.fasta_bins} \
             2> {log}
+        """
+
+
+rule run_semibin2:
+    """
+    Bins contigs with SemiBin2, a fourth binner using self-supervised deep
+    learning over composition and multi-sample coverage.
+
+    Why a fourth binner at all: consolidation can only gain from a
+    candidate no other binner produced, so the value is in failing
+    DIFFERENTLY rather than in failing less. MetaBAT2, MaxBin2 and CONCOCT
+    are all composition-plus-coverage clustering with different distance
+    measures; a learned embedding is a different mechanism.
+
+    It takes the same BAMs the other binners' coverage tables are built
+    from, so multi-sample differential coverage -- which is the thing this
+    pipeline's prototype mapping exists to provide -- reaches it unchanged
+    and no new mapping is needed.
+
+    SEED. SemiBin2 documents --random-seed as reproducing results across
+    runs, unlike VAMB which states determinism is not guaranteed even when
+    seeded. That claim is why this tool was chosen and it is not taken on
+    trust: run the binner three times and compare before using it for
+    anything. --engine cpu is set for the same reason as much as for the
+    absence of a GPU, since GPU kernels are a common source of run-to-run
+    variation.
+
+    Its output layout differs between versions and options, so the bins are
+    normalised into the rule's own output directory rather than leaving
+    downstream rules to guess which of output_bins,
+    output_recluster_bins or output_prerecluster_bins was written.
+    """
+    input:
+        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                assembler = config['assemblers'],
+                contig_sample = wildcards.contig_sample),
+        bams = lambda wildcards: get_bam_list(wildcards.contig_sample, wildcards.mapper, contig_pairings),
+        bais = lambda wildcards: get_index_list(wildcards.contig_sample, wildcards.mapper, contig_pairings)
+    output:
+        bins = directory("output/binning/semibin2/{mapper}/run_semibin2/{contig_sample}/")
+    params:
+        work = "output/binning/semibin2/{mapper}/work/{contig_sample}",
+        seed = config['params'].get('semibin2', {}).get(
+            'random_seed', config.get('seed', 8675309)),
+        engine = config['params'].get('semibin2', {}).get('engine', 'cpu'),
+        environment = config['params'].get('semibin2', {}).get('environment', ''),
+        min_len = config['params'].get('semibin2', {}).get('min_contig_length', 1000),
+        extra = config['params'].get('semibin2', {}).get('extra', '')
+    threads:
+        config['threads'].get('run_semibin2', 16)
+    resources:
+        mem_mb = mem_escalate('run_semibin2', base_default=32000)
+    retries:
+        config['retries'].get('run_semibin2', 2)
+    conda:
+        "../env/semibin.yaml"
+    benchmark:
+        "output/benchmarks/binning/semibin2/{mapper}/run_semibin2/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/semibin2/{mapper}/run_semibin2/{contig_sample}.log"
+    shell:
+        """
+            rm -rf {params.work}
+            mkdir -p {params.work} {output.bins}
+
+            # With --environment SemiBin2 uses a pretrained model and skips
+            # training entirely, which is faster and removes the stochastic
+            # step. Without it the model is trained from this sample, which
+            # makes no assumption about which published habitat the data
+            # resembles. Left empty by default: the built-in models are
+            # human, dog, cat, mouse, pig, chicken, ocean, soil and similar,
+            # and asserting that a wild primate gut is one of those is a
+            # claim about the biology, not a tuning choice.
+            if [ -n "{params.environment}" ]; then
+                MODEL="--environment {params.environment}"
+            else
+                MODEL="--self-supervised"
+            fi
+
+            SemiBin2 single_easy_bin \
+                -i {input.contigs} \
+                -b {input.bams} \
+                -o {params.work} \
+                --threads {threads} \
+                --min-len {params.min_len} \
+                --random-seed {params.seed} \
+                --engine {params.engine} \
+                ${{MODEL}} {params.extra} \
+                2> {log} 1>&2
+
+            # Normalise: whichever directory this version wrote into, the
+            # bins end up in the rule's declared output as plain .fa.
+            SRC=""
+            for d in output_bins output_recluster_bins output_prerecluster_bins bins; do
+                if [ -d "{params.work}/$d" ]; then SRC="{params.work}/$d"; break; fi
+            done
+            if [ -z "$SRC" ]; then
+                echo "SemiBin2 produced no bin directory; sample yields no bins" >> {log}
+                exit 0
+            fi
+            n=0
+            for f in "$SRC"/*.fa "$SRC"/*.fa.gz "$SRC"/*.fna "$SRC"/*.fna.gz; do
+                [ -e "$f" ] || continue
+                b=$(basename "$f"); b=${{b%.gz}}; b=${{b%.fna}}; b=${{b%.fa}}
+                case "$f" in
+                    *.gz) gunzip -c "$f" > {output.bins}/{wildcards.contig_sample}_$b.fa ;;
+                    *)    cp "$f" {output.bins}/{wildcards.contig_sample}_$b.fa ;;
+                esac
+                n=$((n+1))
+            done
+            echo "normalised $n bins from $SRC" >> {log}
+            rm -rf {params.work}
         """
