@@ -14,6 +14,12 @@ rule run_checkm2:
         db_path=config['params']['checkm2']['db_path']
     threads:
         config['threads']['checkm2']
+    retries:
+        # checkm2 runs DIAMOND, which fails transiently under concurrency on
+        # this cluster the same way gunc and DAS_Tool do. It was the only
+        # DIAMOND-using rule without retries, and one such failure killed a
+        # whole comparison run partway through.
+        config['retries'].get('run_checkm2', 3)
     resources:
         mem_mb=config['mem_mb']['checkm2']
     conda:
