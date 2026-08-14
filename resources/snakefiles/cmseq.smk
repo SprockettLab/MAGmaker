@@ -65,8 +65,17 @@ rule cmseq_map:
         bam=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/reads.bam"),
         bai=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/reads.bam.bai")
     params:
-        min_mapq=config['params']['cmseq'].get('min_mapq', 20),
-        min_identity=config['params']['cmseq'].get('min_read_identity', 0.95)
+        # Overridable from the command line as well as the config file, the
+        # same way consolidation_tool is, so the effect of the filters can
+        # be measured by running one arm twice without editing a tracked
+        # file between the two. Setting both to 0 restores the unfiltered
+        # behaviour these replaced.
+        min_mapq=config.get(
+            'cmseq_min_mapq',
+            config['params']['cmseq'].get('min_mapq', 20)),
+        min_identity=config.get(
+            'cmseq_min_read_identity',
+            config['params']['cmseq'].get('min_read_identity', 0.95))
     threads:
         config['threads'].get('cmseq', 8)
     conda:
