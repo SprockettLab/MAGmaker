@@ -243,6 +243,20 @@ params:
     minqual: 30             # minimum base quality
     dominant_frq_thrsh: 0.8
     min_positions: 100      # fewer evaluated positions than this reports NA
+    # Read filters applied before poly.py sees the alignment. Every read in
+    # the sample is mapped to that sample's own MAGs, so reads from species
+    # that were never binned land on the nearest available reference and are
+    # counted as polymorphism. Measured across five arms without these
+    # filters, strain heterogeneity ranked exactly inversely to how well
+    # each arm's MAGs were covered.
+    #
+    # min_mapq removes reads that map about as well to another of this
+    # sample's MAGs. min_read_identity removes reads from relatives that
+    # have no MAG of their own: those map uniquely, so MAPQ cannot catch
+    # them, but divergently. Within-species strain variation is above 95%
+    # identity by definition, so filtering there keeps the signal.
+    min_mapq: 20
+    min_read_identity: 0.95
 
   das_tool:
     search_engine: 'diamond'
