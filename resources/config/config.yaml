@@ -79,6 +79,17 @@ mappers:
   - minimap2
 # - bowtie2
 
+# ONE seed for every tool that accepts one. Tools differ in whether they
+# seed themselves: CONCOCT defaults to a fixed seed, MetaBAT2 defaults to
+# the wall clock, and SemiBin2 defaults to a system-chosen seed and says
+# results "may vary between runs". Setting it here once means a run is
+# reproducible without remembering which tool needed telling.
+#
+# A per-tool key under params: overrides this, for the case where one tool
+# has to be varied deliberately. The value itself carries no meaning; what
+# matters is that it is fixed, and changing it changes the binning.
+seed: 8675309
+
 binners:                # all enabled binners run, then DAS_Tool combines them
   - concoct
   - metabat2
@@ -216,15 +227,36 @@ params:
   metabat2:
     extra: '--verbose'
     min_contig_length: 1500   # should be >= 1500
-    # MetaBAT2's own default is 0, which its source replaces with time(0).
-    # Unseeded, two runs on identical input are not expected to produce the
-    # same bins. Fixing it is what makes a run reproducible; the value
-    # itself carries no meaning, and changing it changes the binning.
-    seed: 8675309
+    # MetaBAT2's own default is 0, which its source replaces with time(0),
+    # so unseeded runs are not expected to agree. The value comes from the
+    # top-level `seed:`; uncomment to override for this tool alone.
+    # seed: 8675309
   maxbin2:
     prob_threshold: 0.8
     extra: ''
     min_contig_length: 1500
+
+  # SemiBin2, an optional fourth binner. Add 'semibin2' to the `binners`
+  # list above to enable it; it is not run by default.
+  semibin2:
+    # SemiBin2 documents --random-seed as reproducing results across runs;
+    # its default is a system-chosen seed with results that "may vary
+    # between runs". The value comes from the top-level `seed:`; uncomment
+    # to override for this tool alone.
+    # random_seed: 8675309
+    # cpu rather than auto. There is no GPU here, and GPU kernels are a
+    # common source of run-to-run variation even when seeded.
+    engine: cpu
+    min_contig_length: 1000
+    # Empty means the model is trained from this sample (--self-supervised).
+    # Setting it to one of human_gut/dog_gut/ocean/soil/cat_gut/human_oral/
+    # mouse_gut/pig_gut/built_environment/wastewater/chicken_caecum/global
+    # uses a pretrained model instead, which is faster and removes the
+    # training step entirely -- but asserting that a wild primate gut
+    # resembles one of those is a claim about the biology rather than a
+    # tuning choice, so it is left to the user.
+    environment: ''
+    extra: ''
   concoct:
     chunk_size: 10000
     overlap_size: 0
@@ -398,6 +430,7 @@ threads:
   run_metabat2: 8
   run_maxbin2: 8
   run_concoct: 8
+  run_semibin2: 16
   concoct: 8
   run_DAS_Tool: 8
   run_binette: 16
@@ -465,6 +498,9 @@ mem_mb:
   # rather than reserving the worst case for every sample.
   run_binette: 64000
   run_binette_max: 192000
+  # SemiBin2 holds contig features and a PyTorch model in memory.
+  run_semibin2: 32000
+  run_semibin2_max: 96000
   metaphlan: 32000              # measured 29688 MB against 32000
   sort_index_bam: 12000         # measured 6831 MB against the 8000 default
 
@@ -486,6 +522,7 @@ mem_mb:
 retries:
   run_DAS_Tool: 4
   run_binette: 2
+  run_semibin2: 2
   run_gunc: 4
   # Escalates memory rather than just re-trying: run_gtdbtk requests
   # mem_mb.gtdbtk * attempt, capped at mem_mb.gtdbtk_max. Two retries reach
