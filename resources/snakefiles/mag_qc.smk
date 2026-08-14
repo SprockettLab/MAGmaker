@@ -34,6 +34,20 @@ rule run_checkm2:
             echo "No bins in {params.bins_dir}; skipping checkm2." >> {log}
             printf "Name\tCompleteness\tContamination\n" > {output.report}
         else
+            # Clear the output directory OURSELVES rather than letting
+            # checkm2 --force do it. --force calls shutil.rmtree, which walks
+            # the tree and unlinks entry by entry; on isilon a file can
+            # vanish between the listing and the unlink and rmtree dies with
+            # FileNotFoundError on its own intermediate, typically
+            # protein_files. Observed killing a run outright.
+            #
+            # Retrying does not help, because every attempt meets the same
+            # half-deleted directory. run_gunc has cleared its output for
+            # this reason since the DIAMOND concurrency work; checkm2 was
+            # missed.
+            rm -rf {params.out_dir}
+            mkdir -p {params.out_dir}
+
             db_flag=""
             if [ -n "{params.db_path}" ]; then
                 db_flag="--database_path {params.db_path}"
