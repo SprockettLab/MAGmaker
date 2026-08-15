@@ -24,7 +24,17 @@ set-resources:
   # four minutes inside the limit. The work itself is minutes; the variance
   # is I/O contention, and an explicit adapter panel adds per-read matching
   # on top. Give it room rather than lose a whole run to one timeout at 98%.
-  fastp:
+  # The key must be the RULE NAME. There is no rule called `fastp`; the
+  # rules are fastp_pe and fastp_se, so a `fastp:` key here matched
+  # nothing and the 360 was silently discarded while both rules kept the
+  # 120 min default. That is exactly the timeout this entry was added to
+  # prevent, and it recurred on 2026-08-15: two vervet samples
+  # (v2528_Mother_Day7, v2945_Infant_Day90) were cancelled as TIMEOUT at
+  # fastp_pe on an 88-sample arm. snakemake does not warn about a
+  # set-resources key that matches no rule.
+  fastp_pe:
+    runtime: 360
+  fastp_se:
     runtime: 360
   host_filter:
     mem_mb: 16000
