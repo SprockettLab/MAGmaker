@@ -318,10 +318,22 @@ params:
   #             the result in mag_qc -- and builds extra candidates from the
   #             intersection, difference and union of overlapping bins.
   #
+  # Binette is the default, on measured evidence. Across four arms holding
+  # reads, assembly, mapping and all three binners constant, and giving
+  # both tools identical scaffolds2bin tables: 888 usable genomes under
+  # DAS_Tool against 1320 under Binette, +49%. Of 51 bins DAS_Tool
+  # selected and Binette did not, ZERO were usable. DAS_Tool also does not
+  # reproduce itself, returning 46, 38 and 33 bins on three identical
+  # runs, which is more variation than any parameter produces.
+  #
+  # DAS_Tool remains fully supported and selectable. It is wired in
+  # correctly and people use it.
+  #
   # Override for one run without editing this file:
+  #   ./run_magmaker.sh --das-tool
   #   ./run_magmaker.sh --binette
   consolidation:
-    tool: das_tool
+    tool: binette
 
   binette:
     # Bins are scored as `completeness - contamination_weight * contamination`.
