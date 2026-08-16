@@ -90,10 +90,29 @@ mappers:
 # matters is that it is fixed, and changing it changes the binning.
 seed: 8675309
 
-binners:                # all enabled binners run, then DAS_Tool combines them
+# All enabled binners run, then the consolidation tool (binette by
+# default) combines them.
+#
+# SemiBin2 was added to the default set on 2026-08-15 on measured
+# evidence. Total MAGs with and without it, holding everything else
+# constant: Piliocolobus badius 51 -> 56 (+9.8%), Cebus imitator
+# 214 -> 233 (+8.9%). Consistent across two hosts, unlike the Binette
+# gain which ranged from +3% to +72%.
+#
+# It is also DETERMINISTIC: three replicate runs produced 155 bins every
+# time. MaxBin2 by contrast is the one binner that does not reproduce
+# itself -- the smoke test's phase 4 finds concoct 11/11 and metabat2
+# 11/11 byte-identical across re-runs while maxbin2 differs on 2 of 11,
+# including one run where it produced no bins at all for a sample.
+#
+# Replacing maxbin2 with semibin2, rather than adding to it, is worth
+# testing: it would make the whole pipeline reproducible at no extra
+# compute. That has NOT been measured and maxbin2 stays for now.
+binners:
   - concoct
   - metabat2
   - maxbin2
+  - semibin2
 
 
 # ═════════════════════════════════════════════════════════════════════════════
