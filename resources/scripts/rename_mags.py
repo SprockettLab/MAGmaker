@@ -26,7 +26,14 @@ if os.path.isdir(renamed_dir):
     shutil.rmtree(renamed_dir)
 os.makedirs(renamed_dir)
 
+n_renamed = 0
 for _, row in df.iterrows():
+    # Rows with MAG_ID NONE record a sample that produced no MAGs. They
+    # carry no FASTA by construction, so they are skipped without the
+    # missing-source warning, which would otherwise fire once per such
+    # sample and read like a fault.
+    if str(row.get('MAG_ID', '')) == 'NONE':
+        continue
     src = str(row['Original_Path'])
     new_name = str(row['New_Name'])
     dst = os.path.join(renamed_dir, f"{new_name}.fa")
@@ -34,5 +41,6 @@ for _, row in df.iterrows():
         print(f"Warning: source FASTA not found, skipping: {src}")
         continue
     shutil.copy2(src, dst)
+    n_renamed += 1
 
-print(f"Renamed {len(df)} MAGs into {renamed_dir}")
+print(f"Renamed {n_renamed} MAGs into {renamed_dir}")
