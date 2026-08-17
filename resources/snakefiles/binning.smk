@@ -385,7 +385,20 @@ rule run_semibin2:
                 MODEL="--self-supervised"
             fi
 
-            SemiBin2 single_easy_bin \
+            # SemiBin2 needs at least one contig of >=4000 bp to form
+            # must-link pairs, and exits non-zero when an assembly has none.
+            # That is a property of the sample, not a pipeline failure: the
+            # sample yields no bins, exactly like the empty-output case
+            # below. Without this branch the non-zero exit propagates under
+            # `bash -euo pipefail` and takes down the whole arm, and the
+            # graceful "no bin directory" path further down is never
+            # reached. Retries cannot help -- the input is the problem, so
+            # all of them fail identically.
+            #
+            # Only that one cause is tolerated. Every other SemiBin2 failure
+            # stays fatal, because a silent `|| true` here would turn real
+            # crashes into samples that quietly contribute nothing.
+            if ! SemiBin2 single_easy_bin \
                 -i {input.contigs} \
                 -b {input.bams} \
                 -o {params.work} \
@@ -394,7 +407,15 @@ rule run_semibin2:
                 --random-seed {params.seed} \
                 --engine {params.engine} \
                 ${{MODEL}} {params.extra} \
-                2> {log} 1>&2
+                2> {log} 1>&2; then
+                if grep -q "no must-link pairs can be generated" {log}; then
+                    echo "SemiBin2: assembly too fragmented to bin (no contig >=4000 bp); sample yields no bins" >> {log}
+                    rm -rf {params.work}
+                    exit 0
+                fi
+                echo "SemiBin2 failed for a reason other than assembly fragmentation" >> {log}
+                exit 1
+            fi
 
             # Normalise: whichever directory this version wrote into, the
             # bins end up in the rule's declared output as plain .fa.

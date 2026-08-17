@@ -88,6 +88,27 @@ After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one
 | `N50` | Assembly N50 (bp) |
 | `Coding_Density` | Fraction of genome that is coding sequence (from CheckM2) |
 | `Total_Coding_Sequences` | Number of predicted coding sequences (from CheckM2) |
+| `Notes` | `NA` for a MAG; on a `NONE` row, why that sample produced none |
+
+### Samples that produced no MAGs
+
+A sample can finish the pipeline without yielding a MAG, either because
+every binner declined it or because nothing survived consolidation. These
+appear after the numbered MAGs as rows with `MAG_ID` = `NONE`, carrying the
+sample in `Sample_ID` and the reason in `Notes`:
+
+```
+NONE  NONE  ...  C59_R_TP4  ...  no binner produced bins; declined by: concoct, maxbin2, metabat2, semibin2
+```
+
+Without these rows such a sample is simply absent from the table, which is
+indistinguishable from one that was never run. `rename_mags` skips them, so
+they do not affect `renamed_mags/`. Filter them out with
+`MAG_ID != "NONE"` before any per-MAG analysis.
+
+The most common cause is an assembly too fragmented to bin. SemiBin2 needs a
+contig of at least 4000 bp to form must-link pairs, and MetaBAT2, MaxBin2
+and CONCOCT have their own minimum-length and marker-gene requirements.
 
 ---
 

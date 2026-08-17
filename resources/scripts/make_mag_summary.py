@@ -361,14 +361,60 @@ def mimag_quality(completeness, contamination):
         return 'LQ'
 
 
+# Column order of mag_summary.tsv. Defined once because two kinds of row are
+# written into it: one per MAG, and one per sample that produced none.
+SUMMARY_COLUMNS = (
+    'MAG_ID', 'New_Name', 'Original_Name', 'Original_Path', 'Sample_ID',
+    'Assembler', 'Winning_Binner', 'Domain', 'Phylum', 'Class', 'Order',
+    'Family', 'Genus', 'Species', 'GTDB_Classification', 'MSA_Percent',
+    'GTDBTk_Warnings', 'Completeness', 'Contamination', 'Quality_Score',
+    'MIMAG_Quality', 'GUNC_Clade_Separation_Score', 'GUNC_Pass',
+    'Strain_Heterogeneity', 'SH_Positions_Evaluated', 'Total_Length_BP',
+    'Num_Contigs', 'Largest_Contig', 'GC_Percent', 'N50', 'Coding_Density',
+    'Total_Coding_Sequences', 'Notes',
+)
+
+
+def binners_with_bins(bins_base, mapper, sample):
+    """
+    in : selected_bins base, mapper, sample
+    out: (contributed, declined) lists of binner names
+
+    A binner's scaffolds2bin table exists for every sample it was asked
+    about; an empty one means it declined that sample. Reading the tables
+    rather than the logs keeps this independent of any binner's messages.
+    """
+    contributed, declined = [], []
+    pattern = os.path.join(bins_base, '*', mapper, 'scaffolds2bin',
+                           f'{sample}_scaffolds2bin.tsv')
+    for path in sorted(glob.glob(pattern)):
+        binner = path.split(os.sep)[-4]
+        try:
+            has_bins = os.path.getsize(path) > 0
+        except OSError:
+            continue
+        (contributed if has_bins else declined).append(binner)
+    return contributed, declined
+
+
 # Collect all MAGs
 all_mags = []
+
+# Samples that finished but yielded no MAGs. Without these the summary is
+# silent about them, which makes a sample nothing could bin look identical
+# to one that was never run.
+samples_without_mags = []
 
 for mapper in mappers:
     for sample in contig_samples:
         bins_dir = os.path.join(bins_base, mapper, selected_fastas, sample)
         if not os.path.isdir(bins_dir):
             print(f"Warning: bins directory not found: {bins_dir}")
+            samples_without_mags.append({
+                'sample': sample,
+                'mapper': mapper,
+                'note': 'no bins directory; consolidation did not run',
+            })
             continue
 
         if consolidation_tool == 'binette':
@@ -385,6 +431,8 @@ for mapper in mappers:
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
         gunc_map = load_gunc(os.path.join(gunc_base, mapper, sample))
         assembler = get_assembler(sample, assemblers)
+
+        n_before = len(all_mags)
 
         for fa in sorted(glob.glob(os.path.join(bins_dir, '*.fa'))):
             bin_name = os.path.splitext(os.path.basename(fa))[0]
@@ -426,6 +474,23 @@ for mapper in mappers:
                 **qc,
                 **gunc,
                 **stats
+            })
+
+        # Record why, distinguishing "every binner declined this sample"
+        # from "binners produced bins but none survived selection". Both
+        # are real outcomes and they mean different things.
+        if len(all_mags) == n_before:
+            contributed, declined = binners_with_bins(bins_base, mapper, sample)
+            if contributed:
+                note = ('no MAGs passed selection; bins were offered by: '
+                        + ', '.join(contributed))
+            elif declined:
+                note = ('no binner produced bins; declined by: '
+                        + ', '.join(declined))
+            else:
+                note = 'no binner output found for this sample'
+            samples_without_mags.append({
+                'sample': sample, 'mapper': mapper, 'note': note,
             })
 
 # Sort by taxonomy then MIMAG quality (HQ first) then original name
@@ -477,7 +542,29 @@ for i, mag in enumerate(all_mags, 1):
         'N50': mag.get('N50', ''),
         'Coding_Density': mag.get('coding_density', ''),
         'Total_Coding_Sequences': mag.get('total_coding_sequences', ''),
+        'Notes': 'NA',
     })
 
-pd.DataFrame(rows).to_csv(snakemake.output.summary, sep='\t', index=False)
-print(f"Wrote summary for {len(rows)} MAGs to {snakemake.output.summary}")
+# One row per sample that produced no MAGs, after the numbered MAGs. MAG_ID
+# is NONE rather than a number so these never look like MAGs, and
+# Original_Path is NA so rename_mags skips them.
+for entry in sorted(samples_without_mags, key=lambda e: (e['sample'], e['mapper'])):
+    row = dict.fromkeys(SUMMARY_COLUMNS, 'NA')
+    row['MAG_ID'] = 'NONE'
+    row['New_Name'] = 'NONE'
+    row['Sample_ID'] = entry['sample']
+    row['Assembler'] = get_assembler(entry['sample'], assemblers)
+    row['Notes'] = entry['note']
+    rows.append(row)
+
+# Explicit columns so the placeholder rows and the MAG rows cannot drift
+# apart, and so column order is stable across runs.
+pd.DataFrame(rows, columns=list(SUMMARY_COLUMNS)).to_csv(
+    snakemake.output.summary, sep='\t', index=False)
+
+n_mags = len(all_mags)
+print(f"Wrote summary for {n_mags} MAGs to {snakemake.output.summary}")
+if samples_without_mags:
+    print(f"{len(samples_without_mags)} sample(s) produced no MAGs:")
+    for entry in samples_without_mags:
+        print(f"  {entry['sample']} ({entry['mapper']}): {entry['note']}")
