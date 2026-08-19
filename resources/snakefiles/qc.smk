@@ -90,6 +90,10 @@ rule fastqc_pre_trim:
         "output/benchmarks/qc/fastqc_pre_trim/{sample}.{seqrun}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
+    retries:
+        config['retries'].get('fastqc_pre_trim', 2)
+    resources:
+        runtime=runtime_escalate('fastqc_pre_trim', base_default=360)
     conda:
         "../env/fastqc.yaml"
     log:
@@ -128,6 +132,10 @@ rule fastp_pe:
         extra=config['params']['fastp']['extra']
     threads:
         config['threads']['fastp']
+    retries:
+        config['retries'].get('fastp_pe', 2)
+    resources:
+        runtime=runtime_escalate('fastp_pe', base_default=360)
     conda:
         "../env/fastp.yaml"
     log:
@@ -169,6 +177,10 @@ rule fastp_se:
         )
     threads:
         config['threads']['fastp']
+    retries:
+        config['retries'].get('fastp_se', 2)
+    resources:
+        runtime=runtime_escalate('fastp_se', base_default=360)
     conda:
         "../env/fastp.yaml"
     log:
@@ -229,6 +241,10 @@ rule fastqc_post_trim:
         "output/benchmarks/qc/fastqc_post_trim/{sample}.{seqrun}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
+    retries:
+        config['retries'].get('fastqc_post_trim', 2)
+    resources:
+        runtime=runtime_escalate('fastqc_post_trim', base_default=360)
     conda:
         "../env/fastqc.yaml"
     log:
@@ -293,6 +309,10 @@ rule host_bowtie2_build:
         indexbase=host_base
     threads:
         config['threads']['host_filter']
+    retries:
+        config['retries'].get('host_bowtie2_build', 2)
+    resources:
+        runtime=runtime_escalate('host_bowtie2_build', base_default=1440)
     shell:
         # A complete index next to the reference is reused rather than
         # rebuilt. Shared host indexes commonly predate the sentinel, and
@@ -341,6 +361,11 @@ rule host_filter:
         "../env/qc.yaml"
     threads:
         config['threads']['host_filter']
+    retries:
+        config['retries'].get('host_filter', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('host_filter', 16000),
+        runtime=runtime_escalate('host_filter', base_default=480)
     log:
         "output/logs/qc/host_filter/{sample}.log"
     benchmark:
@@ -404,6 +429,10 @@ rule fastqc_post_host:
         "output/benchmarks/qc/fastqc_post_host/{sample}.{read}_benchmark.txt"
     threads:
         config['threads']['fastqc']
+    retries:
+        config['retries'].get('fastqc_post_host', 2)
+    resources:
+        runtime=runtime_escalate('fastqc_post_host', base_default=360)
     conda:
         "../env/fastqc.yaml"
     log:

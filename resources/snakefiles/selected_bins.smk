@@ -134,6 +134,9 @@ rule run_DAS_Tool:
         config['threads']['run_DAS_Tool']
     retries:
         config['retries']['run_DAS_Tool']
+    resources:
+        mem_mb=config['mem_mb'].get('run_DAS_Tool', 32000),
+        runtime=runtime_escalate('run_DAS_Tool', base_default=240)
     benchmark:
         "output/benchmarks/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}_benchmark.txt"
     log:

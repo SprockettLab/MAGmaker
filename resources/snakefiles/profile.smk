@@ -18,6 +18,8 @@ rule taxonomy_kraken:
         "../env/profile.yaml"
     threads:
         config['threads']['kraken2']
+    retries:
+        config['retries'].get('taxonomy_kraken', 2)
     resources:
         # kraken2 reads a ~200 GB index per job, so the cost is dominated by
         # that read rather than by classification. Left uncapped, every
@@ -25,7 +27,8 @@ rule taxonomy_kraken:
         # jobs are cancelled on wall clock while doing almost no work. This
         # is a counter, not a reservation: set `resources: [kraken_slots=N]`
         # in the profile to allow N concurrent kraken jobs per workflow.
-        kraken_slots=1
+        kraken_slots=1,
+        runtime=runtime_escalate('taxonomy_kraken', base_default=480)
     log:
         "output/logs/profile/kraken2/taxonomy_kraken/{sample}.log"
     benchmark:
@@ -126,7 +129,8 @@ rule metaphlan:
         # gut cohort -- 93%, i.e. the next OOM waiting to happen. The
         # footprint is driven by the bowtie2 index and read volume,
         # both of which vary by sample.
-        mem_mb=mem_escalate('metaphlan', base_default=32000)
+        mem_mb=mem_escalate('metaphlan', base_default=32000),
+        runtime=runtime_escalate('metaphlan', base_default=480)
     conda:
         "../env/profile.yaml"
     threads:

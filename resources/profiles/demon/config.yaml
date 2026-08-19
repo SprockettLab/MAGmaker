@@ -17,101 +17,56 @@ resources:
 use-conda: true
 conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs
 
+# ═════════════════════════════════════════════════════════════════════════════
+# RUNTIME, 2026-08-19: moved out of this file
+# ═════════════════════════════════════════════════════════════════════════════
+# Every runtime: entry that used to live in set-resources below has moved to
+# a `resources: runtime=runtime_escalate('rulename', base_default=N)` call
+# on the rule itself (resources/snakefiles/*.smk), or megahit_runtime for
+# rule megahit specifically. runtime_escalate lives in common.smk and
+# mirrors mem_escalate's existing pattern: base minutes on the first
+# attempt (the same N that used to be the flat value here), doubling per
+# retry up to a cap, instead of one static number that either fails a
+# genuinely-slow sample or wastes a slot padding every normal one.
+#
+# Why: six arms hit TIMEOUT across unrelated rules in the same 24-48h
+# window on 2026-08-18/19 (Chlorocebus_sabaeus__Jasinska_2013_tentative/
+# run_semibin2, Pan_troglodytes_schweinfurthii/megahit, Pan_troglodytes_
+# troglodytes/run_concoct, Pan_paniscus/run_concoct+make_maxbin2_coverage_
+# table, Rhinopithecus_roxellana/megahit+sourmash_sketch_reads, Callithrix_
+# jacchus/run_semibin2). Two of those (both run_semibin2 cases) turned out
+# to already succeed on retry within minutes, no runtime change needed at
+# all -- proof a static number was never going to be the right lever for
+# every failure. Raising the same handful of numbers again each time a new
+# rule timed out was the whack-a-mole this was built to stop.
+#
+# A rule's CURRENT flat number still lives as the base_default argument at
+# its call site in the .smk file, so first-attempt behaviour is unchanged
+# by this move; only retries (added wherever a rule lacked one) get more
+# room. The evidence behind each original number is preserved below,
+# trimmed to the mem_mb entries that are still authoritative here -- the
+# runtime evidence moved into the docstrings/comments beside each rule's
+# runtime_escalate() call in its .smk file.
+#
+# Optional per-rule runtime overrides now live in config['runtime'] in
+# resources/config/config.yaml (parallel to config['mem_mb']), currently
+# empty -- add an entry there to override a base_default without editing
+# code, same as mem_mb.
 set-resources:
-  # fastp reads every raw FASTQ, so it is the rule most exposed to slow
-  # shared storage. At the 120 min default it was cancelled on a 2.4 GB
-  # saliva library while ~200 jobs were hammering isilon -- 116 min elapsed,
-  # four minutes inside the limit. The work itself is minutes; the variance
-  # is I/O contention, and an explicit adapter panel adds per-read matching
-  # on top. Give it room rather than lose a whole run to one timeout at 98%.
-  # The key must be the RULE NAME. There is no rule called `fastp`; the
-  # rules are fastp_pe and fastp_se, so a `fastp:` key here matched
-  # nothing and the 360 was silently discarded while both rules kept the
-  # 120 min default. That is exactly the timeout this entry was added to
-  # prevent, and it recurred on 2026-08-15: two vervet samples
-  # (v2528_Mother_Day7, v2945_Infant_Day90) were cancelled as TIMEOUT at
-  # fastp_pe on an 88-sample arm. snakemake does not warn about a
-  # set-resources key that matches no rule.
-  fastp_pe:
-    runtime: 360
-  fastp_se:
-    runtime: 360
   host_filter:
     mem_mb: 16000
-    runtime: 480
-  # Indexing a 3 Gbp primate reference takes hours, and this rule had no
-  # entry at all, so it inherited the 120 min default and was cancelled
-  # mid-build for both Papio cynocephalus and Pan paniscus. It only ever
-  # passed before because the references in use were already indexed; every
-  # new host species would have hit this.
-  host_bowtie2_build:
-    runtime: 1440
-  # Normally minutes, but not on uncompressed input: the MG-RAST douc
-  # libraries are ~40 GB each as plain FASTQ rather than the .gz everything
-  # else uses, and at 120 min all four were cancelled around 70% read.
-  fastqc_pre_trim:
-    runtime: 360
-  fastqc_post_trim:
-    runtime: 360
-  fastqc_post_host:
-    runtime: 360
-  megahit:
-    runtime: 480
   metaspades:
     mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
                         # input-scaled floor; this overrides it. defq nodes
                         # are ~755 GB, so 256 GB still fits 3 jobs per node.
-    runtime: 1440       # metaspades is much slower than megahit
   metaphlan:
     mem_mb: 32000
-    runtime: 480        # 240 was hit exactly, on a deep single-end sample
   taxonomy_kraken:
     mem_mb: 220000
-    runtime: 480        # same, on the same arm
-  # Sorting the BAMs from a large arm is not a two-minute job: a 20-sample
-  # cohort produces a 614 GB mapping directory, and samtools writes its
-  # temp chunks to shared storage. At the 120 min default this rule was
-  # cancelled repeatedly on the biggest arms. Only runtime is set here;
-  # memory comes from mem_escalate in the rule and must not be overridden.
-  sort_index_bam:
-    runtime: 480
-  # One alignment of a sample's reads against its own MAGs. Comparable to a
-  # single column of the all-vs-all mapping, and cannot reuse it: those
-  # BAMs are temp() and the all-vs-all maps prototype reads to each
-  # sample's contigs, never a non-prototype sample's reads to its own.
-  cmseq_map:
-    runtime: 480
-  # poly.py is a single-threaded Python pileup over the whole BAM, and
-  # those BAMs are large: a 2-sample douc arm produced a 7.9 GB one, which
-  # the 120 min default cancelled outright. This is the slowest step CMSeq
-  # adds and the one that decides whether it is affordable at all.
-  cmseq_poly:
-    runtime: 1440
-  # Building the reference is cat over a sample's MAGs, and the aggregation
-  # reads one small table, but both inherited the 120 min default and there
-  # is no reason for either to be the thing that stops an arm.
-  cmseq_reference:
-    runtime: 240
-  cmseq_aggregate:
-    runtime: 240
   # Memory for these two comes from config['mem_mb'] (read by the rules),
-  # so set only runtime here to avoid overriding the config-driven mem.
-  run_checkm2:
-    runtime: 360        # DIAMOND vs uniref100; usually well under this
-  # GTDB-Tk's three stages have very different wall clocks. Listed
-  # separately because a rule with no entry here silently inherits the
-  # 120 min default, which has cancelled arms in this project before.
-  gtdbtk_identify:
-    runtime: 480        # prodigal + hmmsearch over every bin
-  gtdbtk_align:
-    runtime: 240        # alignment only; no pplacer
-  run_gtdbtk:
-    runtime: 1440       # classify (pplacer + ANI) can run several hours
-                        # memory comes from config['mem_mb']['gtdbtk'];
-                        # 128 GB OOM-killed 17/341 samples, raised to 300 GB
+  # so set only mem_mb here to avoid overriding the config-driven mem.
   make_concoct_coverage_table:
     mem_mb: 64000       # ~7.8 GiB at the 8 GB cap on a 90-BAM reference
-    runtime: 720        # concoct_coverage_table.py over ~90 BAMs > 2 h default
   make_metabat2_coverage_table:
     mem_mb: 64000       # jgi_summarize_bam_contig_depths holds every contig's
                         # depth in memory across all BAMs -- it prints "all
@@ -121,20 +76,16 @@ set-resources:
                         # cohort (180,875 contigs x 14 BAMs), dying silently
                         # mid-read with no error line, which makes the cause
                         # hard to see. Matches its concoct counterpart above.
-    runtime: 720
   run_DAS_Tool:
     mem_mb: 32000       # DIAMOND SCG search OOMs at the 8 GB default (bacteria
-    runtime: 240        # set fails, archaea survives); matches run_checkm2's
+                        # set fails, archaea survives); matches run_checkm2's
                         # DIAMOND allocation, the one that works
   run_gunc:
     mem_mb: 32000       # DIAMOND vs progenomes2.1 OOMs at the 8 GB default
-    runtime: 240
   run_genomad:
     mem_mb: 32000       # marker DB search (MMseqs2/aragorn) over all contigs
-    runtime: 480
   run_checkv:
     mem_mb: 16000       # DIAMOND/HMMER over just the viral contig subset
-    runtime: 240
 latency-wait: 300      # isilon can lag well past 60s when a full run's outputs
                        # land at once; 60 caused spurious MissingOutput failures
                        # on make_mag_summary and consolidate_DAS_Tool_bins
