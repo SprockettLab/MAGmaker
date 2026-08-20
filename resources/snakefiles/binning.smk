@@ -156,6 +156,22 @@ rule run_maxbin2:
         "output/benchmarks/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}.log"
+    retries:
+        config['retries'].get('run_maxbin2', 2)
+    resources:
+        # Never had an entry at all, in this rule or any profile -- silently
+        # ran on the bare 120 min default since this project began. Confirmed
+        # TIMEOUT 2026-08-20 (Pan_troglodytes_troglodytes/SAMN28679416, SLURM
+        # job 1563464, CANCELLED ... DUE TO TIME LIMIT at exactly 120 min):
+        # a 22-sample all-vs-all binning group means MaxBin2's own marker-
+        # gene search (FragGeneScan + HMMER over ~100k contigs) plus EM
+        # clustering across 15 abundance columns per contig, comparable in
+        # scope to make_concoct_coverage_table's ~90-BAM case. No direct
+        # timing measurement of a successful large-cohort run exists yet, so
+        # this is a moderate, evidence-motivated starting point rather than
+        # a guessed-large one -- retries + escalation cover the rest if it's
+        # still not enough, rather than guessing higher up front.
+        runtime=runtime_escalate('run_maxbin2', base_default=240)
     shell:
         """
             mkdir -p {output.bins}
