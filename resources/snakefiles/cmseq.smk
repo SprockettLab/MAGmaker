@@ -40,6 +40,10 @@ rule cmseq_reference:
     log:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.reference.log"
     threads: 1
+    retries:
+        config['retries'].get('cmseq_reference', 2)
+    resources:
+        runtime=runtime_escalate('cmseq_reference', base_default=240)
     shell:
         """
         : > {output.ref}
@@ -98,8 +102,11 @@ rule cmseq_map:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.map.log"
     benchmark:
         "output/benchmarks/mag_qc/cmseq/{mapper}/{contig_sample}.map.txt"
+    retries:
+        config['retries'].get('cmseq_map', 2)
     resources:
-        mem_mb=mem_escalate('cmseq_map', base_default=16000)
+        mem_mb=mem_escalate('cmseq_map', base_default=16000),
+        runtime=runtime_escalate('cmseq_map', base_default=480)
     shell:
         """
         # An empty reference means the sample produced no MAGs. Write a
@@ -199,6 +206,10 @@ rule cmseq_poly:
         minqual=config['params'].get('cmseq', {}).get('minqual', 30),
         dom=config['params'].get('cmseq', {}).get('dominant_frq_thrsh', 0.8)
     threads: 1
+    retries:
+        config['retries'].get('cmseq_poly', 2)
+    resources:
+        runtime=runtime_escalate('cmseq_poly', base_default=1440)
     conda:
         # metaphlan depends on cmseq, so profile.yaml already provides
         # poly.py and that environment is built in every arm. If metaphlan
@@ -240,6 +251,10 @@ rule cmseq_aggregate:
     log:
         "output/logs/mag_qc/cmseq/{mapper}/{contig_sample}.aggregate.log"
     threads: 1
+    retries:
+        config['retries'].get('cmseq_aggregate', 2)
+    resources:
+        runtime=runtime_escalate('cmseq_aggregate', base_default=240)
     conda:
         # the script is standard library only
         "../env/mag_qc.yaml"

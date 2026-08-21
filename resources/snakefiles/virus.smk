@@ -24,6 +24,11 @@ rule run_genomad:
         extra = config['params']['genomad']['extra']
     threads:
         config['threads']['genomad']
+    retries:
+        config['retries'].get('run_genomad', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('run_genomad', 32000),
+        runtime=runtime_escalate('run_genomad', base_default=480)
     conda:
         "../env/genomad.yaml"
     benchmark:
@@ -72,6 +77,11 @@ rule run_checkv:
         db = config['params']['checkv']['db_path']
     threads:
         config['threads']['checkv']
+    retries:
+        config['retries'].get('run_checkv', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('run_checkv', 16000),
+        runtime=runtime_escalate('run_checkv', base_default=240)
     conda:
         "../env/checkv.yaml"
     benchmark:

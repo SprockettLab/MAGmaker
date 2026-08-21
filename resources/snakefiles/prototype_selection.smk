@@ -177,6 +177,10 @@ rule sourmash_sketch_reads:
     benchmark:
         "output/benchmarks/prototype_selection/sourmash_sketch_reads/{sample}_benchmark.txt"
     threads: 1
+    retries:
+        config['retries'].get('sourmash_sketch_reads', 2)
+    resources:
+        runtime=runtime_escalate('sourmash_sketch_reads', base_default=240)
     conda: "../env/prototype_selection.yaml"
     params:
         k = config['params']['sourmash']['k'],

@@ -19,11 +19,14 @@ rule metaspades:
         "output/benchmarks/assemble/metaspades/{sample}_benchmark.txt"
     log:
         "output/logs/assemble/metaspades/{sample}.log"
+    retries:
+        config['retries'].get('metaspades', 2)
     resources:
         mem_mb=lambda wildcards, input: min(
             config['mem_mb']['spades'],
             max(16000, input.size_mb * 10)
-        )
+        ),
+        runtime=runtime_escalate('metaspades', base_default=1440)
     shell:
         """
         rm -rf {params.temp_dir}
@@ -65,11 +68,14 @@ rule megahit:
         "output/benchmarks/assemble/megahit/{sample}_benchmark.txt"
     log:
         "output/logs/assemble/megahit/{sample}.log"
+    retries:
+        config['retries'].get('megahit', 2)
     resources:
         mem_mb=lambda wildcards, input: min(
             config['mem_mb']['megahit'],
             max(16000, input.size_mb * 10)
-        )
+        ),
+        runtime=megahit_runtime
     shell:
         """
         rm -rf {params.temp_dir}

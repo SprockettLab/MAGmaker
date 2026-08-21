@@ -108,7 +108,8 @@ rule map_reads_minimap2:
         # whole pipeline, across 4092 jobs. minimap2's index and
         # alignment buffers scale with assembly size, so a larger
         # reference crosses it.
-        mem_mb=mem_escalate('map_reads_minimap2', base_default=12000)
+        mem_mb=mem_escalate('map_reads_minimap2', base_default=12000),
+        runtime=runtime_escalate('map_reads_minimap2', base_default=240)
     shell:
         """
         # Map reads against contigs
@@ -140,7 +141,8 @@ rule sort_index_bam:
         # samtools sort -@ N defaults to ~768 MB per thread, so at 8
         # threads it sits just under the 8 GB default reservation
         # before any other overhead. Large BAMs cross it.
-        mem_mb=mem_escalate('sort_index_bam', base_default=12000)
+        mem_mb=mem_escalate('sort_index_bam', base_default=12000),
+        runtime=runtime_escalate('sort_index_bam', base_default=480)
     shell:
         """
         # -m is per THREAD and samtools overshoots it, so this takes 60% of

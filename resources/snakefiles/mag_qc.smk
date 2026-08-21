@@ -21,7 +21,8 @@ rule run_checkm2:
         # whole comparison run partway through.
         config['retries'].get('run_checkm2', 3)
     resources:
-        mem_mb=config['mem_mb']['checkm2']
+        mem_mb=config['mem_mb']['checkm2'],
+        runtime=runtime_escalate('run_checkm2', base_default=360)
     conda:
         "../env/checkm2.yaml"
     log:
@@ -81,6 +82,8 @@ rule run_gunc:
         config['threads']['gunc']
     retries:
         config['retries']['run_gunc']
+    resources:
+        runtime=runtime_escalate('run_gunc', base_default=240)
     conda:
         "../env/gunc.yaml"
     log:
@@ -153,7 +156,8 @@ rule gtdbtk_identify:
     retries:
         config['retries'].get('run_gtdbtk', 2)
     resources:
-        mem_mb=mem_escalate('gtdbtk_align', base_default=32000, cap_multiple=2)
+        mem_mb=mem_escalate('gtdbtk_align', base_default=32000, cap_multiple=2),
+        runtime=runtime_escalate('gtdbtk_identify', base_default=480)
     conda:
         "../env/gtdbtk.yaml"
     log:
@@ -216,7 +220,8 @@ rule gtdbtk_align:
     retries:
         config['retries'].get('run_gtdbtk', 2)
     resources:
-        mem_mb=mem_escalate('gtdbtk_align', base_default=32000, cap_multiple=2)
+        mem_mb=mem_escalate('gtdbtk_align', base_default=32000, cap_multiple=2),
+        runtime=runtime_escalate('gtdbtk_align', base_default=240)
     conda:
         "../env/gtdbtk.yaml"
     log:
@@ -281,7 +286,8 @@ rule run_gtdbtk:
         mem_mb=lambda wildcards, attempt: min(
             config['mem_mb'].get('gtdbtk_max', config['mem_mb']['gtdbtk']),
             config['mem_mb']['gtdbtk'] * attempt
-        )
+        ),
+        runtime=runtime_escalate('run_gtdbtk', base_default=1440)
     conda:
         "../env/gtdbtk.yaml"
     log:
@@ -376,6 +382,10 @@ rule make_mag_summary:
         assemblers=config['assemblers'],
         consolidation_tool=consolidation_tool(),
         selected_fastas=SELECTED_FASTAS
+    retries:
+        config['retries'].get('make_mag_summary', 2)
+    resources:
+        runtime=runtime_escalate('make_mag_summary', base_default=480)
     conda:
         "../env/mag_qc.yaml"
     log:

@@ -537,6 +537,20 @@ mem_mb:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# RUNTIME
+# ═════════════════════════════════════════════════════════════════════════════
+# Optional per-rule overrides for runtime_escalate() (common.smk), the
+# runtime analogue of mem_escalate above. Every rule calling it already
+# carries its current value as a Python-level base_default at the call
+# site (in the relevant .smk file) -- this section only needs an entry
+# when a specific arm wants to override that default without editing
+# code, exactly like mem_mb above. Left empty on purpose: added
+# 2026-08-19 alongside runtime_escalate, and no arm has needed an
+# override yet.
+runtime: {}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # RETRIES
 # ═════════════════════════════════════════════════════════════════════════════
 # DAS_Tool's single-copy-gene detection intermittently comes up empty under
@@ -563,3 +577,27 @@ retries:
   # consolidate_DAS_Tool_bins reads run_DAS_Tool's output; on a busy shared
   # filesystem that input can lag past latency-wait. A few retries ride it out.
   consolidate_DAS_Tool_bins: 3
+  # `samtools coverage {bam} | tail | sort | cut` on one BAM -- seconds to
+  # low minutes of real work, nothing that legitimately needs hours. Its
+  # profile runtime was raised to 240 min on 2026-08-18 on the theory that
+  # it was isilon contention under concurrent load, not inherent slowness;
+  # it timed out again at that same 240 min cap on 2026-08-19
+  # (Chlorocebus_sabaeus__Jasinska_2013_tentative, SAMN03068417_Mapped_To_
+  # SAMN03068427, job 1496689), which confirms the theory rather than
+  # disproving it -- raising the runtime further only delays hitting the
+  # same contention again. This rule had no retries entry at all despite
+  # being exactly the kind of lightweight, transient-failure-prone command
+  # this block exists for. A retry that lands after the batch drains a bit
+  # should clear it in minutes instead of holding a job slot for hours.
+  make_maxbin2_coverage_table: 3
+  # NOT a data-volume problem: 3 Pan_troglodytes_schweinfurthii samples
+  # (11-21.5 GB nonhost input) timed out at the 480 min cap on 2026-08-19,
+  # but completed samples in the same arm up to 21.94 GB finished in <=6.5 h
+  # (observed rate ~18-21 min/GB from real benchmarks: 12.70 GB/258.7 min,
+  # 16.92 GB/351.5 min, 21.94 GB/390.8 min). That rate predicts all 3 failed
+  # samples finish in 4-6.3 h, comfortably under 480 min. No retries entry
+  # existed for megahit despite two other rules (run_semibin2 here, twice)
+  # resolving the identical TIMEOUT-then-fast-retry-on-a-different-node
+  # pattern via retries alone. Give a stuck/contended attempt a fresh shot
+  # instead of raising a cap the data never needed.
+  megahit: 2

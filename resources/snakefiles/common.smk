@@ -504,6 +504,72 @@ def mem_escalate(key, base_default=8000, cap_multiple=4):
     return _resolve
 
 
+def runtime_escalate(key, base_default, cap_multiple=3):
+    """in : a config['runtime'] key, plus a fallback base value (minutes)
+       out: a snakemake resource callable of (wildcards, attempt)
+
+    Mirrors mem_escalate above: returns base minutes on the first attempt
+    and base * attempt on each retry, capped by base * cap_multiple
+    (override per rule with config['runtime'][key + '_max']).
+
+    Added 2026-08-19 after a run of TIMEOUT failures across unrelated
+    rules and arms -- Chlorocebus_sabaeus__Jasinska_2013_tentative/
+    run_semibin2, Callithrix_jacchus/run_semibin2, Pan_troglodytes_
+    troglodytes/run_concoct, Rhinopithecus_roxellana/megahit and
+    sourmash_sketch_reads -- turned out to split into two causes a single
+    flat runtime can't tell apart in advance: genuine per-sample
+    underprovisioning, and contention. `sacct` on 2026-08-19 confirmed two
+    Rhinopithecus_roxellana megahit jobs hit their exact 480 min TIMEOUT,
+    but each lost ~2h before megahit's own log printed a single line --
+    conda activation / isilon I/O under concurrent-arm load, not assembly.
+    A retry can't tell which cause it hit either, but does not need to: a
+    fresh attempt lands in a different, often less contended window (this
+    already resolved two of the cases above -- Callithrix_jacchus and
+    Jasinska_2013_tentative's run_semibin2 -- via the existing retries: 2
+    alone, no runtime change), and escalating the ceiling on top means a
+    retry that hits genuine data-driven slowness gets more room too,
+    instead of failing the same way twice. Every static profile runtime:
+    override that existed before this was added is now the base_default
+    passed in here, so first-attempt behaviour is unchanged; only retries
+    (now added wherever a rule lacked one) get more room.
+
+    Rules using this need a `retries:` directive, or `attempt` never
+    exceeds 1 and the escalation is inert -- same caveat as mem_escalate."""
+    def _resolve(wildcards, attempt):
+        base = config["runtime"].get(key, base_default)
+        cap = config["runtime"].get("%s_max" % key, base * cap_multiple)
+        return min(cap, base * attempt)
+    return _resolve
+
+
+def megahit_runtime(wildcards, input, attempt):
+    """Snakemake resource callable for rule megahit's runtime.
+
+    Size-scaled floor from real throughput data (2026-08-19, Pan_
+    troglodytes_schweinfurthii completed benchmarks, pure compute time
+    from the benchmark directive, not including cluster overhead):
+    12.70 GB/258.7 min, 16.92 GB/351.5 min, 21.94 GB/390.8 min -- a linear
+    fit of ~77 + 14.3 min/GB, padded to 90 + 15 min/GB for safety margin.
+
+    Never below config['runtime'].get('megahit', 480): that flat value
+    already covers every sample seen so far up to ~22 GB, and a pure
+    size formula would UNDER-predict a small-but-complex sample --
+    Rhinopithecus_roxellana/summer-Wild06, only 2.64 GB, genuinely needed
+    ~8h because of k-mer graph complexity at k=21, not data volume (its
+    own log spent 2h18m on just the k=21 build-to-assemble transition).
+    Size alone does not capture that; the flat floor is what keeps a
+    small-but-complex sample from being under-provisioned by a formula
+    that only knows about GB.
+
+    Escalates by attempt on top of whichever floor wins, same as
+    runtime_escalate, so a retry gets more room whether the sample was
+    underprovisioned by size or by complexity."""
+    size_gb = getattr(input, 'size_mb', 0) / 1024
+    base = max(config['runtime'].get('megahit', 480), 90 + 15 * size_gb)
+    cap = config['runtime'].get('megahit_max', base * 3)
+    return min(cap, base * attempt)
+
+
 def seqruns_for(sample):
     """in : sample name
        out: list of that sample's sequencing run names, in index order"""

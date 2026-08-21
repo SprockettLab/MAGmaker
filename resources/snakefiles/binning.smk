@@ -27,6 +27,11 @@ rule make_metabat2_coverage_table:
         "output/benchmarks/binning/metabat2/{mapper}/make_metabat2_coverage_table/{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/metabat2/{mapper}/make_metabat2_coverage_table/{contig_sample}.log"
+    retries:
+        config['retries'].get('make_metabat2_coverage_table', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('make_metabat2_coverage_table', 64000),
+        runtime=runtime_escalate('make_metabat2_coverage_table', base_default=720)
     shell:
         """
             jgi_summarize_bam_contig_depths --outputDepth {output.coverage_table} {input.bams} 2> {log}
@@ -91,6 +96,10 @@ rule make_maxbin2_coverage_table:
         "output/benchmarks/binning/maxbin2/{mapper}/make_maxbin2_coverage_table/{read_sample}_Mapped_To_{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/maxbin2/{mapper}/make_maxbin2_coverage_table/{read_sample}_Mapped_To_{contig_sample}.log"
+    retries:
+        config['retries'].get('make_maxbin2_coverage_table', 3)
+    resources:
+        runtime=runtime_escalate('make_maxbin2_coverage_table', base_default=240)
     shell:
         """
           samtools coverage {input.bams} | \
@@ -147,6 +156,22 @@ rule run_maxbin2:
         "output/benchmarks/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}.log"
+    retries:
+        config['retries'].get('run_maxbin2', 2)
+    resources:
+        # Never had an entry at all, in this rule or any profile -- silently
+        # ran on the bare 120 min default since this project began. Confirmed
+        # TIMEOUT 2026-08-20 (Pan_troglodytes_troglodytes/SAMN28679416, SLURM
+        # job 1563464, CANCELLED ... DUE TO TIME LIMIT at exactly 120 min):
+        # a 22-sample all-vs-all binning group means MaxBin2's own marker-
+        # gene search (FragGeneScan + HMMER over ~100k contigs) plus EM
+        # clustering across 15 abundance columns per contig, comparable in
+        # scope to make_concoct_coverage_table's ~90-BAM case. No direct
+        # timing measurement of a successful large-cohort run exists yet, so
+        # this is a moderate, evidence-motivated starting point rather than
+        # a guessed-large one -- retries + escalation cover the rest if it's
+        # still not enough, rather than guessing higher up front.
+        runtime=runtime_escalate('run_maxbin2', base_default=240)
     shell:
         """
             mkdir -p {output.bins}
@@ -222,6 +247,11 @@ rule make_concoct_coverage_table:
         "output/benchmarks/binning/concoct/{mapper}/make_concoct_coverage_table/{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/concoct/{mapper}/make_concoct_coverage_table/{contig_sample}.log"
+    retries:
+        config['retries'].get('make_concoct_coverage_table', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('make_concoct_coverage_table', 64000),
+        runtime=runtime_escalate('make_concoct_coverage_table', base_default=720)
     shell:
         """
           concoct_coverage_table.py {input.bed} \
@@ -249,6 +279,10 @@ rule run_concoct:
         "output/benchmarks/binning/concoct/{mapper}/run_concoct/{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/concoct/{mapper}/run_concoct/{contig_sample}.log"
+    retries:
+        config['retries'].get('run_concoct', 2)
+    resources:
+        runtime=runtime_escalate('run_concoct', base_default=720)
     shell:
         """
             concoct --threads {threads} -l {params.min_contig_length} \
@@ -357,7 +391,8 @@ rule run_semibin2:
     threads:
         config['threads'].get('run_semibin2', 16)
     resources:
-        mem_mb = mem_escalate('run_semibin2', base_default=32000)
+        mem_mb = mem_escalate('run_semibin2', base_default=32000),
+        runtime = runtime_escalate('run_semibin2', base_default=360)
     retries:
         config['retries'].get('run_semibin2', 2)
     conda:
