@@ -430,9 +430,20 @@ rule run_semibin2:
             # reached. Retries cannot help -- the input is the problem, so
             # all of them fail identically.
             #
-            # Only that one cause is tolerated. Every other SemiBin2 failure
-            # stays fatal, because a silent `|| true` here would turn real
-            # crashes into samples that quietly contribute nothing.
+            # Two distinct messages have now been seen for the same
+            # underlying "assembly too sparse to bin" situation, confirmed
+            # 2026-08-22 on Ferretti_2018/SAMN06350118: "no must-link pairs
+            # can be generated" (no contig >=4000bp) and "but only N
+            # contain(s) at least 1000 basepairs" (an assembly of just 7
+            # contigs, only 1 over even the 1000bp floor). The second
+            # message wasn't matched by the original single-string check,
+            # so this exact tolerated case was being retried as fatal --
+            # pointlessly, since retries can't fix a property of the input.
+            #
+            # Only these two causes are tolerated. Every other SemiBin2
+            # failure stays fatal, because a silent `|| true` here would
+            # turn real crashes into samples that quietly contribute
+            # nothing.
             if ! SemiBin2 single_easy_bin \
                 -i {input.contigs} \
                 -b {input.bams} \
@@ -443,8 +454,8 @@ rule run_semibin2:
                 --engine {params.engine} \
                 ${{MODEL}} {params.extra} \
                 2> {log} 1>&2; then
-                if grep -q "no must-link pairs can be generated" {log}; then
-                    echo "SemiBin2: assembly too fragmented to bin (no contig >=4000 bp); sample yields no bins" >> {log}
+                if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs" {log}; then
+                    echo "SemiBin2: assembly too fragmented/sparse to bin; sample yields no bins" >> {log}
                     rm -rf {params.work}
                     exit 0
                 fi
