@@ -285,11 +285,37 @@ rule run_concoct:
         runtime=runtime_escalate('run_concoct', base_default=720)
     shell:
         """
-            concoct --threads {threads} -l {params.min_contig_length} \
-            --composition_file {input.contigs_10K} \
-            --coverage_file {input.coverage_table} \
-            -b {params.bins} \
-            2> {log} 1>&2
+            mkdir -p output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}
+
+            # concoct exits non-zero with "Not enough contigs pass the
+            # threshold filter" when a sample's assembly is too sparse for
+            # even one contig to clear -l {params.min_contig_length} --
+            # the same class of property-of-the-sample failure already
+            # tolerated for run_maxbin2 ("cannot be binned") and
+            # run_semibin2 ("no must-link pairs"/"basepairs"), confirmed
+            # 2026-08-22 on Ferretti_2018/SAMN06350074 after two identical
+            # retries (retries can't fix a property of the input). concoct's
+            # own clustering CSV format is headerless contig,cluster pairs,
+            # so an empty file is a well-formed zero-contigs-clustered
+            # result, not a guessed schema -- merge_cutup_clustering.py is
+            # concoct's own script and should treat it as the normal empty
+            # case.
+            #
+            # Only that one cause is tolerated. Every other concoct failure
+            # stays fatal, same rationale as the maxbin2/semibin2 branches.
+            if ! concoct --threads {threads} -l {params.min_contig_length} \
+                --composition_file {input.contigs_10K} \
+                --coverage_file {input.coverage_table} \
+                -b {params.bins} \
+                2> {log} 1>&2; then
+                if grep -q "Not enough contigs pass the threshold filter" {log}; then
+                    echo "concoct: assembly too sparse to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
+                    : > {output.clustering}
+                    exit 0
+                fi
+                echo "concoct failed for a reason other than assembly sparsity" >> {log}
+                exit 1
+            fi
 
             mv output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}/{wildcards.contig_sample}_bins_clustering_gt{params.min_contig_length}.csv output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}/{wildcards.contig_sample}_bins_clustering.csv
         """
