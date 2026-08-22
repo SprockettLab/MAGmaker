@@ -570,6 +570,41 @@ def megahit_runtime(wildcards, input, attempt):
     return min(cap, base * attempt)
 
 
+def host_filter_runtime(wildcards, input, attempt):
+    """Snakemake resource callable for host_filter/host_filter_se's runtime.
+
+    Was a flat runtime_escalate('host_filter', base_default=480) until
+    2026-08-21, when two Pan_troglodytes_schweinfurthii samples
+    (SAMN28679412/SRR19415659, SAMN28679423/SRR19415682) timed out at
+    that flat 480 min. ENA's own read/base counts confirmed these are
+    genuinely deep at the source (553.8M and 507.5M read pairs, 167.3 and
+    153.3 Gbp) -- not corrupted or duplicated data -- roughly 3.5-4x
+    deeper than a typical sample in the same arm (143.1M reads, 43.2 Gbp)
+    that passes within the flat limit. A flat value escalated only by
+    doubling on retry (960 min) risked still being insufficient for an
+    outlier this deep, and would waste two full retry cycles reaching
+    that point regardless.
+
+    Floor stays at config['runtime'].get('host_filter', 480) -- unchanged
+    for the great majority of samples, which fall well inside it. The
+    size-scaled term only matters for volume well beyond that.
+
+    Rate (20 min per combined GB of R1+R2, or the single SE file) is a
+    deliberately generous first-pass estimate, NOT fit from a completed
+    benchmark the way megahit_runtime's 90 + 15/GB was fit from three
+    real runs -- there is only the one confirmed-insufficient data point
+    here (480 min failed at ~76 GB), no confirmed completion time to
+    anchor a precise rate. Revisit once these two samples' own
+    benchmark files exist and give something real to fit against.
+
+    Escalates by attempt on top of whichever floor wins, same as
+    runtime_escalate."""
+    size_gb = getattr(input, 'size_mb', 0) / 1024
+    base = max(config['runtime'].get('host_filter', 480), 20 * size_gb)
+    cap = config['runtime'].get('host_filter_max', base * 3)
+    return min(cap, base * attempt)
+
+
 def seqruns_for(sample):
     """in : sample name
        out: list of that sample's sequencing run names, in index order"""
