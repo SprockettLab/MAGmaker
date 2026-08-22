@@ -365,7 +365,7 @@ rule host_filter:
         config['retries'].get('host_filter', 2)
     resources:
         mem_mb=config['mem_mb'].get('host_filter', 16000),
-        runtime=runtime_escalate('host_filter', base_default=480)
+        runtime=host_filter_runtime
     log:
         "output/logs/qc/host_filter/{sample}.log"
     benchmark:
@@ -405,6 +405,11 @@ rule host_filter_se:
         "../env/qc.yaml"
     threads:
         config['threads']['host_filter']
+    retries:
+        config['retries'].get('host_filter_se', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('host_filter', 16000),
+        runtime=host_filter_runtime
     log:
         "output/logs/qc/host_filter/{sample}.se.log"
     benchmark:
