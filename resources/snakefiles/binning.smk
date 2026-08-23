@@ -66,19 +66,41 @@ rule run_metabat2:
         config['threads']['run_metabat2']
     conda:
         "../env/binning.yaml"
+    retries:
+        config['retries'].get('run_metabat2', 2)
     benchmark:
         "output/benchmarks/binning/metabat2/{mapper}/run_metabat2/{contig_sample}_benchmark.txt"
     log:
         "output/logs/binning/metabat2/{mapper}/run_metabat2/{contig_sample}.log"
     shell:
         """
-            metabat2 {params.extra} --numThreads {threads} \
-            --inFile {input.contigs} \
-            --outFile {params.basename} \
-            --abdFile {input.coverage_table} \
-            --minContig {params.min_contig_length} \
-            --seed {params.seed} \
-            2> {log} 1>&2
+            mkdir -p {output.bins}
+
+            # metabat2 exits non-zero with "[Error!] There were no large
+            # target contigs. Cannot proceed." when a sample's assembly has
+            # zero contigs >= --minContig. Same class of property-of-the-
+            # sample failure already tolerated for run_maxbin2, run_semibin2,
+            # and run_concoct -- confirmed 2026-08-22 on the same
+            # Ferretti_2018/SAMN06350074 assembly that also tripped
+            # concoct's equivalent check (0 contigs >=1500bp, only 1
+            # >=1000bp). Retries can't fix a property of the input.
+            #
+            # Only that one cause is tolerated. Every other metabat2
+            # failure stays fatal, same rationale as the other binners.
+            if ! metabat2 {params.extra} --numThreads {threads} \
+                --inFile {input.contigs} \
+                --outFile {params.basename} \
+                --abdFile {input.coverage_table} \
+                --minContig {params.min_contig_length} \
+                --seed {params.seed} \
+                2> {log} 1>&2; then
+                if grep -q "There were no large target contigs" {log}; then
+                    echo "metabat2: assembly too sparse to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
+                    exit 0
+                fi
+                echo "metabat2 failed for a reason other than assembly sparsity" >> {log}
+                exit 1
+            fi
         """
 
 
