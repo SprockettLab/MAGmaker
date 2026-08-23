@@ -323,6 +323,19 @@ rule run_concoct:
             # concoct's own script and should treat it as the normal empty
             # case.
             #
+            # The message is NOT in {log}: concoct writes it via Python's
+            # own logging module to {params.bins}_log.txt, a second,
+            # separate file it creates itself, bypassing stdout/stderr (and
+            # therefore the 2>{log} redirect below) entirely. A first
+            # attempt at this fix (2026-08-22) grepped only {log} and never
+            # matched, so every occurrence stayed fatal despite the branch
+            # existing -- confirmed by comparing {log} (only "Up and
+            # running" + this branch's own fallback message) against
+            # {params.bins}_log.txt (the real "Not enough contigs..." line)
+            # for the same failed run. Check both files, since it's not
+            # certain every concoct version/failure path writes to the
+            # same one.
+            #
             # Only that one cause is tolerated. Every other concoct failure
             # stays fatal, same rationale as the maxbin2/semibin2 branches.
             if ! concoct --threads {threads} -l {params.min_contig_length} \
@@ -330,7 +343,7 @@ rule run_concoct:
                 --coverage_file {input.coverage_table} \
                 -b {params.bins} \
                 2> {log} 1>&2; then
-                if grep -q "Not enough contigs pass the threshold filter" {log}; then
+                if grep -q "Not enough contigs pass the threshold filter" {log} {params.bins}_log.txt 2>/dev/null; then
                     echo "concoct: assembly too sparse to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
                     : > {output.clustering}
                     exit 0
