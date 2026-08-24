@@ -496,12 +496,16 @@ rule run_semibin2:
             # 2026-08-22 on Ferretti_2018/SAMN06350118: "no must-link pairs
             # can be generated" (no contig >=4000bp) and "but only N
             # contain(s) at least 1000 basepairs" (an assembly of just 7
-            # contigs, only 1 over even the 1000bp floor). The second
-            # message wasn't matched by the original single-string check,
-            # so this exact tolerated case was being retried as fatal --
-            # pointlessly, since retries can't fix a property of the input.
+            # contigs, only 1 over even the 1000bp floor). A third phrasing
+            # confirmed 2026-08-24 on Yassour_2018/SAMN09382471: "contains 1
+            # contigs, but all are shorter than 1000 basepairs" (megahit
+            # collapsed the sample to a single contig under even the
+            # 1000bp floor). Each was missed by the narrower check before
+            # it, so this exact tolerated case kept getting retried as
+            # fatal -- pointlessly, since retries can't fix a property of
+            # the input.
             #
-            # Only these two causes are tolerated. Every other SemiBin2
+            # Only these causes are tolerated. Every other SemiBin2
             # failure stays fatal, because a silent `|| true` here would
             # turn real crashes into samples that quietly contribute
             # nothing.
@@ -515,7 +519,7 @@ rule run_semibin2:
                 --engine {params.engine} \
                 ${{MODEL}} {params.extra} \
                 2> {log} 1>&2; then
-                if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs" {log}; then
+                if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs|all are shorter than [0-9]+ basepairs" {log}; then
                     echo "SemiBin2: assembly too fragmented/sparse to bin; sample yields no bins" >> {log}
                     rm -rf {params.work}
                     exit 0
