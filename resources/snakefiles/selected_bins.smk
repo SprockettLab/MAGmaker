@@ -378,7 +378,16 @@ rule run_binette:
             # that redoes the work.
             rm -rf {params.out_dir}
 
-            binette \
+            # Binette can fail outright (not just select zero bins) when the
+            # input bins are so sparse there's nothing for DIAMOND to hit --
+            # confirmed 2026-08-24 on Yassour_2018/SAMN09382731, whose only
+            # surviving binner (concoct) produced 4 bins totalling just 14
+            # contigs. Binette's own error is explicit about this being a
+            # low-quality-assembly outcome, not a crash: "DIAMOND result
+            # file ... is empty. This can happen with low-quality assemblies
+            # where DIAMOND produces no hits." Only that exact situation is
+            # tolerated; anything else stays fatal.
+            if ! binette \
                 --contig2bin_tables $tables \
                 --contigs {input.contigs} \
                 --outdir {params.out_dir} \
@@ -390,7 +399,18 @@ rule run_binette:
                 --min_length {params.min_length} \
                 --max_length {params.max_length} \
                 $db_flag {params.extra} \
-                2> {log} 1>&2
+                2> {log} 1>&2; then
+                if grep -q "DIAMOND result file .* is empty" {log}; then
+                    echo "Binette: assembly too sparse for DIAMOND to produce any hits; sample yields no MAGs." >> {log}
+                    mkdir -p {params.out_dir}/final_bins
+                    printf "name\torigin\tis_original\toriginal_name\tcompleteness\tcontamination\tcheckm2_model\tscore\tsize\tN50\tcoding_density\tcontig_count\n" > {output.report}
+                    printf "contig\tbin\n" > {output.contig2bin}
+                    rm -rf {params.out_dir}/temporary_files
+                    exit 0
+                fi
+                echo "Binette failed for a reason other than DIAMOND finding no hits" >> {log}
+                exit 1
+            fi
 
             # Binette writes no contig2bin table when it selects nothing.
             # An absent file would fail the rule; an empty one records that
