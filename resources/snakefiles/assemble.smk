@@ -149,11 +149,27 @@ rule quast:
     benchmark:
         "output/benchmarks/assemble/{assembler}/quast/{sample}_benchmark.txt"
     shell:
+        # quast is a quality REPORT, not something that should gate the
+        # pipeline -- the pre-existing `touch {output.report}` line only
+        # makes sense as a fallback for a failed/incomplete quast run, but
+        # under Snakemake's default `bash -euo pipefail` a non-zero
+        # quast.py exit aborted the script before that line ever ran,
+        # making the intended fallback dead code. Confirmed 2026-08-23:
+        # 5 samples in Yassour_2018 failed quast simultaneously (same
+        # exact second), taking the whole arm down with them despite this
+        # rule clearly never being meant to be fatal.
+        #
+        # `|| true` restores that intent. Also adds the log redirect the
+        # rule was missing entirely -- `log:` was declared but nothing
+        # ever wrote to it, so a real quast failure only ever showed up
+        # in the SLURM-captured job output, not the log path anyone would
+        # actually check.
         """
         quast.py \
           -o {params.outdir} \
           -t {threads} \
-          {input}
+          {input} \
+          2> {log} 1>&2 || true
           touch {output.report}
         """
 
