@@ -400,7 +400,13 @@ rule run_binette:
                 --max_length {params.max_length} \
                 $db_flag {params.extra} \
                 2> {log} 1>&2; then
-                if grep -q "DIAMOND result file .* is empty" {log}; then
+                # Two independent checks, not one line-spanning pattern --
+                # confirmed 2026-08-24 the first version of this check never
+                # matched at all: binette's logger word-wraps its output
+                # (mid-word even), so "DIAMOND result file" and "is empty"
+                # always land on separate physical lines and a single grep
+                # pattern requiring both on one line can never see them.
+                if grep -q "DIAMOND result file" {log} && grep -q "is empty" {log}; then
                     echo "Binette: assembly too sparse for DIAMOND to produce any hits; sample yields no MAGs." >> {log}
                     mkdir -p {params.out_dir}/final_bins
                     printf "name\torigin\tis_original\toriginal_name\tcompleteness\tcontamination\tcheckm2_model\tscore\tsize\tN50\tcoding_density\tcontig_count\n" > {output.report}
