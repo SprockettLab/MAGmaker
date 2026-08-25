@@ -275,9 +275,25 @@ rule make_concoct_coverage_table:
         mem_mb=config['mem_mb'].get('make_concoct_coverage_table', 64000),
         runtime=runtime_escalate('make_concoct_coverage_table', base_default=720)
     shell:
+        # concoct_coverage_table.py crashes with pandas.errors.EmptyDataError
+        # ("No columns to parse from file") when its input bed/bam data is
+        # empty -- confirmed 2026-08-24 on Yassour_2018 (an early-life infant
+        # cohort, where a sample's assembly can genuinely have zero contigs,
+        # unlike every adult-gut arm elsewhere in this project). A well-formed
+        # empty coverage_table.txt is the same "no data" result run_concoct
+        # already treats as zero contigs to bin, so this is tolerated the
+        # same way, not left to crash the rule.
         """
-          concoct_coverage_table.py {input.bed} \
-          {input.bam} > {output.coverage_table} 2> {log}
+          if ! concoct_coverage_table.py {input.bed} \
+              {input.bam} > {output.coverage_table} 2> {log}; then
+              if grep -q "EmptyDataError" {log}; then
+                  echo "concoct_coverage_table.py: empty bed/bam input (likely a zero-contig assembly); writing empty coverage table" >> {log}
+                  : > {output.coverage_table}
+              else
+                  echo "concoct_coverage_table.py failed for a reason other than empty input" >> {log}
+                  exit 1
+              fi
+          fi
         """
 
 rule run_concoct:
@@ -308,6 +324,18 @@ rule run_concoct:
     shell:
         """
             mkdir -p output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}
+
+            # An empty coverage_table.txt (make_concoct_coverage_table's own
+            # tolerated empty-input case, added 2026-08-24) means there is no
+            # coverage data at all -- a different, more extreme situation
+            # than "some contigs but too few pass the length filter" below,
+            # and not one worth handing to concoct to fail on its own. Same
+            # empty-clustering-file outcome either way.
+            if [ ! -s {input.coverage_table} ]; then
+                echo "concoct: coverage table is empty (no coverage data); sample yields no bins" >> {log}
+                : > {output.clustering}
+                exit 0
+            fi
 
             # concoct exits non-zero with "Not enough contigs pass the
             # threshold filter" when a sample's assembly is too sparse for
@@ -500,9 +528,16 @@ rule run_semibin2:
             # confirmed 2026-08-24 on Yassour_2018/SAMN09382471: "contains 1
             # contigs, but all are shorter than 1000 basepairs" (megahit
             # collapsed the sample to a single contig under even the
-            # 1000bp floor). Each was missed by the narrower check before
-            # it, so this exact tolerated case kept getting retried as
-            # fatal -- pointlessly, since retries can't fix a property of
+            # 1000bp floor). A fourth, even more extreme case confirmed the
+            # same day on Yassour_2018/SAMN09382536: "Input file ... is
+            # empty. Please check inputs." -- a zero-contig assembly, not
+            # just a sparse one. Zero-contig assemblies are specific to
+            # Yassour_2018 being an early-life (infant) cohort: infant stool
+            # can be host-DNA-dominated enough post-filtering that nothing
+            # survives to assemble, unlike every adult-gut arm elsewhere in
+            # this project. Each phrasing was missed by the narrower check
+            # before it, so this exact tolerated case kept getting retried
+            # as fatal -- pointlessly, since retries can't fix a property of
             # the input.
             #
             # Only these causes are tolerated. Every other SemiBin2
@@ -519,7 +554,7 @@ rule run_semibin2:
                 --engine {params.engine} \
                 ${{MODEL}} {params.extra} \
                 2> {log} 1>&2; then
-                if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs|all are shorter than [0-9]+ basepairs" {log}; then
+                if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs|all are shorter than [0-9]+ basepairs|Input file .* is empty" {log}; then
                     echo "SemiBin2: assembly too fragmented/sparse to bin; sample yields no bins" >> {log}
                     rm -rf {params.work}
                     exit 0
