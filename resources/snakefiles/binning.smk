@@ -213,16 +213,30 @@ rule run_maxbin2:
             # than a failure: host-dominated libraries reach it routinely, and
             # metabat2 and concoct bin the same assembly without complaint.
             # DAS_Tool needs only one bin set, so the sample is left with no
-            # maxbin2 bins instead of stopping the workflow. Every other
-            # non-zero exit is still a real error.
+            # maxbin2 bins instead of stopping the workflow.
+            #
+            # A second, distinct cause tolerated as of 2026-08-24: MaxBin2's
+            # bundled FragGeneScan call crashing outright ("Error running
+            # FragGeneScan"), reproduced identically 3x on Yassour_2018/
+            # SAMN09382539 (34-contig assembly). Checked and ruled out
+            # MaxBin2's own suggested cause -- this env's FragGeneScan is
+            # 1.32, well above the "1.18 or above" it warns about -- and
+            # FragGeneScan itself wrote nothing to its own .frag.out/.frag.err
+            # on every attempt, consistent with a real crash rather than a
+            # clean, further-diagnosable error. metabat2 and concoct already
+            # bin this same assembly without issue, so losing MaxBin2's
+            # contribution for this one sample doesn't lose the sample from
+            # the analysis, just one of three binners feeding into it.
+            #
+            # Every other non-zero exit is still a real error.
             if ! run_MaxBin.pl -thread {threads} -prob_threshold {params.prob} \
             -min_contig_length {params.min_contig_length} {params.extra} \
             -contig {input.contigs} \
             -abund_list {input.abund_list} \
             -out {params.basename} \
             2> {log} 1>&2; then
-                if grep -q "cannot be binned" {log}; then
-                    echo "MaxBin2 found too few marker genes to bin this sample; continuing with no maxbin2 bins." >> {log}
+                if grep -qE "cannot be binned|Error running FragGeneScan" {log}; then
+                    echo "MaxBin2 could not bin this sample (too few marker genes or a FragGeneScan crash); continuing with no maxbin2 bins." >> {log}
                 else
                     exit 1
                 fi
