@@ -85,7 +85,16 @@ rule run_metabat2:
             # concoct's equivalent check (0 contigs >=1500bp, only 1
             # >=1000bp). Retries can't fix a property of the input.
             #
-            # Only that one cause is tolerated. Every other metabat2
+            # A second phrasing confirmed 2026-08-24 on Yassour_2018/
+            # SAMN09382536, a genuinely zero-contig assembly (not just
+            # sparse): "Number of columns (excluding the first column) in
+            # abundance data file is not even." A zero-contig assembly
+            # produces a degenerate abundance table (make_metabat2_coverage_
+            # table's own output), which metabat2 rejects on structure
+            # before it ever gets to the "no large target contigs" check --
+            # same underlying cause, different failure surface.
+            #
+            # Only these causes are tolerated. Every other metabat2
             # failure stays fatal, same rationale as the other binners.
             if ! metabat2 {params.extra} --numThreads {threads} \
                 --inFile {input.contigs} \
@@ -94,8 +103,8 @@ rule run_metabat2:
                 --minContig {params.min_contig_length} \
                 --seed {params.seed} \
                 2> {log} 1>&2; then
-                if grep -q "There were no large target contigs" {log}; then
-                    echo "metabat2: assembly too sparse to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
+                if grep -qE "There were no large target contigs|abundance data file is not even" {log}; then
+                    echo "metabat2: assembly too sparse/degenerate to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
                     exit 0
                 fi
                 echo "metabat2 failed for a reason other than assembly sparsity" >> {log}
