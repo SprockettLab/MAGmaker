@@ -308,6 +308,22 @@ rule run_gtdbtk:
         fi
 
         export GTDBTK_DATA_PATH="{params.db_path}"
+
+        # gtdbtk classify shells out to skani by bare command name, so PATH
+        # decides which skani runs. Confirmed 2026-08-26 on
+        # MAGmaker_Rhinopithecus_bieti (Rb1, Rb3, Rb5, Rb7, Rb8 all failing
+        # identically): this rule's own conda env carries skani 0.3.2, but
+        # gtdbtk logged "Calculating all vs all ANI with skani v0.1.4" and
+        # died on "Found argument '--short-header' which wasn't expected".
+        # 0.1.4 predates the flag; GTDB-Tk 2.4+ needs >=0.2.1. The 0.1.4
+        # binary lives in the metaphlan/kraken2 profile env, which was
+        # reaching this job ahead of the rule's own env. Putting
+        # $CONDA_PREFIX/bin first -- $CONDA_PREFIX being set by Snakemake's
+        # own conda-env activation for this exact rule -- pins skani to the
+        # version installed alongside this gtdbtk, whatever else is on PATH.
+        # Same failure shape as the run_maxbin2 perl fix.
+        export PATH="$CONDA_PREFIX/bin:$PATH"
+
         gtdbtk classify \
             --genome_dir {params.bins_dir} \
             --align_dir {params.out_dir} \
