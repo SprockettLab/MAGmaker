@@ -229,7 +229,21 @@ rule run_maxbin2:
             # the analysis, just one of three binners feeding into it.
             #
             # Every other non-zero exit is still a real error.
-            if ! run_MaxBin.pl -thread {threads} -prob_threshold {params.prob} \
+            #
+            # run_MaxBin.pl is invoked via "$CONDA_PREFIX/bin/perl
+            # $CONDA_PREFIX/bin/run_MaxBin.pl", not the bare command name.
+            # Confirmed 2026-08-25 (MAGmaker_Rhinopithecus_bieti, all 8
+            # maxbin2 samples): its shebang is "#!/usr/bin/env perl", so
+            # running it as a bare command lets PATH pick ANY perl found
+            # first -- and if a different rule's/tool's conda env put its
+            # own perl earlier on PATH, that perl's @INC won't have this
+            # env's LWP::Simple, crashing with "Can't locate LWP/Simple.pm"
+            # before any real binning happens. This env's OWN perl (called
+            # by full path) has LWP::Simple in its @INC just fine --
+            # $CONDA_PREFIX (set by Snakemake's own conda-env activation
+            # for this exact rule) guarantees the right one regardless of
+            # what else is on PATH.
+            if ! "$CONDA_PREFIX/bin/perl" "$CONDA_PREFIX/bin/run_MaxBin.pl" -thread {threads} -prob_threshold {params.prob} \
             -min_contig_length {params.min_contig_length} {params.extra} \
             -contig {input.contigs} \
             -abund_list {input.abund_list} \
