@@ -301,10 +301,37 @@ rule run_gtdbtk:
             exit 0
         fi
 
-        # Already classified by a classify_wf run predating the split.
+        # Reuse a classification only when it covers every bin.
+        #
+        # This guard exists for classify_wf runs predating the stage split,
+        # but `gtdbtk.*.summary.tsv` also matches a summary left behind by an
+        # attempt that died partway. classify writes ar53 first because it is
+        # small and fast, then spends hours in bac120 pplacer, so a bac120 OOM
+        # leaves gtdbtk.ar53.summary.tsv on disk. The retry then matched that
+        # file, declared the work already done, and exited 0, which touched
+        # .done and reported success. Every bacterial MAG in the sample lost
+        # its taxonomy, and because retries.run_gtdbtk escalates mem_mb per
+        # attempt, short circuiting the retry also disabled the memory
+        # escalation built for exactly this failure.
+        #
+        # Seen 2026-08-26 on Homo_sapiens__AMY1CN__Poole_2026 (f359TP01,
+        # f359TP07, f395TP01) and Rhinopithecus_roxellana (winter-Wild17):
+        # 371 MAGs of median 90% completeness silently unclassified, with the
+        # lone archaeon in each sample the only survivor. See #86.
+        #
+        # Counting classified genomes against bins distinguishes a complete
+        # classification from a partial one. Nothing is deleted: gtdbtk
+        # classify overwrites its own outputs, and a partial summary is still
+        # evidence worth keeping if the rerun also fails.
         if ls {params.out_dir}/gtdbtk.*.summary.tsv 2>/dev/null 1>/dev/null; then
-            echo "Reusing existing classification in {params.out_dir}" >> {log}
-            exit 0
+            n_bins=$(ls {params.bins_dir}/*.fa 2>/dev/null | wc -l | tr -d '[:space:]')
+            n_classified=$(cat {params.out_dir}/gtdbtk.*.summary.tsv 2>/dev/null \
+                | grep -cv '^user_genome' || true)
+            if [ "$n_classified" -ge "$n_bins" ]; then
+                echo "Reusing existing classification in {params.out_dir} ($n_classified genomes)" >> {log}
+                exit 0
+            fi
+            echo "Existing classification covers only $n_classified of $n_bins bins; reclassifying." >> {log}
         fi
 
         export GTDBTK_DATA_PATH="{params.db_path}"

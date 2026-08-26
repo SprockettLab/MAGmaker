@@ -433,6 +433,9 @@ for mapper in mappers:
         assembler = get_assembler(sample, assemblers)
 
         n_before = len(all_mags)
+        missing_tax = []
+        missing_checkm2 = []
+        missing_gunc = []
 
         for fa in sorted(glob.glob(os.path.join(bins_dir, '*.fa'))):
             bin_name = os.path.splitext(os.path.basename(fa))[0]
@@ -443,6 +446,8 @@ for mapper in mappers:
 
             tax_entry = tax_map.get(
                 bin_name, (parse_gtdbtk_classification(''), '', '', ''))
+            if bin_name not in tax_map:
+                missing_tax.append(bin_name)
             tax_dict, full_classification, msa_percent, gtdbtk_warnings = tax_entry
             if msa_percent == '':
                 msa_percent = msa_map.get(bin_name, '')
@@ -453,9 +458,13 @@ for mapper in mappers:
                 'completeness': '', 'contamination': '', 'quality_score': '',
                 'coding_density': '', 'total_coding_sequences': ''
             })
+            if bin_name not in checkm2_map:
+                missing_checkm2.append(bin_name)
             gunc = gunc_map.get(bin_name, {
                 'gunc_clade_separation_score': '', 'gunc_pass': ''
             })
+            if bin_name not in gunc_map:
+                missing_gunc.append(bin_name)
             sh, sh_n = cmseq_map.get(bin_name, ('NA', 'NA'))
 
             all_mags.append({
@@ -475,6 +484,27 @@ for mapper in mappers:
                 **gunc,
                 **stats
             })
+
+        # A stage that produced no result for a bin is written to the summary
+        # as an empty field, which is indistinguishable from a stage that ran
+        # and had nothing to say. That ambiguity hid a GTDB-Tk failure across
+        # four samples for four months: bac120 classify died, every bacterial
+        # MAG got a blank taxonomy, and nothing in the output said so (#86).
+        # Report the gaps here, while the sample that caused them is still
+        # named, rather than leaving them to be noticed downstream.
+        n_bins_here = len(all_mags) - n_before
+        for stage, missing in (('GTDB-Tk', missing_tax),
+                               ('CheckM2', missing_checkm2),
+                               ('GUNC', missing_gunc)):
+            if not missing:
+                continue
+            scope = 'ALL' if len(missing) == n_bins_here else str(len(missing))
+            print(
+                f"WARNING: {mapper}/{sample}: no {stage} result for {scope} of "
+                f"{n_bins_here} bins (e.g. {', '.join(missing[:3])}). Those "
+                f"fields are blank in mag_summary.tsv and are NOT a result.",
+                file=sys.stderr,
+            )
 
         # Record why, distinguishing "every binner declined this sample"
         # from "binners produced bins but none survived selection". Both
