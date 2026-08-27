@@ -229,6 +229,20 @@ def load_checkm2(checkm2_dir):
     return checkm2_map
 
 
+def _has_value(x):
+    """True when a QC field carries an actual result.
+
+    A tool can report a row for a genome and leave the result blank, which is
+    not the same as reporting a result. pandas turns those into NaN, and
+    str(NaN) is 'nan', so both spellings have to be treated as absent.
+    """
+    if x is None:
+        return False
+    if isinstance(x, float) and pd.isna(x):
+        return False
+    return str(x).strip().lower() not in ('', 'nan', 'none')
+
+
 def load_gunc(gunc_dir):
     gunc_map = {}
     matches = glob.glob(os.path.join(gunc_dir, '*.maxCSS_level.tsv'))
@@ -236,9 +250,15 @@ def load_gunc(gunc_dir):
         df = pd.read_csv(matches[0], sep='\t')
         for _, row in df.iterrows():
             name = str(row.get('genome', ''))
+            # GUNC emits a row for every genome it was given, but leaves the
+            # score columns as NaN for any genome whose genes did not map to
+            # the reference, then exits 0. Normalize that to '' here so the
+            # value is a clean string rather than a float NaN downstream.
+            csep = row.get('clade_separation_score', '')
+            gpass = row.get('pass.GUNC', '')
             gunc_map[name] = {
-                'gunc_clade_separation_score': row.get('clade_separation_score', ''),
-                'gunc_pass': row.get('pass.GUNC', '')
+                'gunc_clade_separation_score': '' if pd.isna(csep) else csep,
+                'gunc_pass': '' if pd.isna(gpass) else gpass
             }
     return gunc_map
 
@@ -446,7 +466,7 @@ for mapper in mappers:
 
             tax_entry = tax_map.get(
                 bin_name, (parse_gtdbtk_classification(''), '', '', ''))
-            if bin_name not in tax_map:
+            if bin_name not in tax_map or not str(full_classification).strip():
                 missing_tax.append(bin_name)
             tax_dict, full_classification, msa_percent, gtdbtk_warnings = tax_entry
             if msa_percent == '':
@@ -458,12 +478,12 @@ for mapper in mappers:
                 'completeness': '', 'contamination': '', 'quality_score': '',
                 'coding_density': '', 'total_coding_sequences': ''
             })
-            if bin_name not in checkm2_map:
+            if bin_name not in checkm2_map or not _has_value(qc.get('completeness')):
                 missing_checkm2.append(bin_name)
             gunc = gunc_map.get(bin_name, {
                 'gunc_clade_separation_score': '', 'gunc_pass': ''
             })
-            if bin_name not in gunc_map:
+            if bin_name not in gunc_map or not _has_value(gunc.get('gunc_pass')):
                 missing_gunc.append(bin_name)
             sh, sh_n = cmseq_map.get(bin_name, ('NA', 'NA'))
 
@@ -502,7 +522,9 @@ for mapper in mappers:
             print(
                 f"WARNING: {mapper}/{sample}: no {stage} result for {scope} of "
                 f"{n_bins_here} bins (e.g. {', '.join(missing[:3])}). Those "
-                f"fields are blank in mag_summary.tsv and are NOT a result.",
+                f"fields are blank in mag_summary.tsv and are NOT a result. "
+                f"The stage may have exited 0 having produced nothing for "
+                f"them: check its log for this sample.",
                 file=sys.stderr,
             )
 
