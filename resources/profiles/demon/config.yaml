@@ -1,0 +1,94 @@
+executor: slurm
+
+default-resources:
+  slurm_partition: defq
+  mem_mb: 8000
+  runtime: 120        # minutes; defq default is 120, max is 90 days
+
+jobs: 100
+
+# Caps concurrent kraken2 jobs within one workflow. kraken2 reads a ~200 GB
+# index per job, so a dozen at once saturate shared storage and jobs are
+# cancelled on wall clock having done almost no classification. This is a
+# per-workflow counter: several arms running side by side each get their
+# own allowance, so stagger arms as well when the queue is busy.
+resources:
+  - kraken_slots=2
+use-conda: true
+conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snakemake_envs
+
+# ═════════════════════════════════════════════════════════════════════════════
+# RUNTIME, 2026-08-19: moved out of this file
+# ═════════════════════════════════════════════════════════════════════════════
+# Every runtime: entry that used to live in set-resources below has moved to
+# a `resources: runtime=runtime_escalate('rulename', base_default=N)` call
+# on the rule itself (resources/snakefiles/*.smk), or megahit_runtime for
+# rule megahit specifically. runtime_escalate lives in common.smk and
+# mirrors mem_escalate's existing pattern: base minutes on the first
+# attempt (the same N that used to be the flat value here), doubling per
+# retry up to a cap, instead of one static number that either fails a
+# genuinely-slow sample or wastes a slot padding every normal one.
+#
+# Why: six arms hit TIMEOUT across unrelated rules in the same 24-48h
+# window on 2026-08-18/19 (Chlorocebus_sabaeus__Jasinska_2013_tentative/
+# run_semibin2, Pan_troglodytes_schweinfurthii/megahit, Pan_troglodytes_
+# troglodytes/run_concoct, Pan_paniscus/run_concoct+make_maxbin2_coverage_
+# table, Rhinopithecus_roxellana/megahit+sourmash_sketch_reads, Callithrix_
+# jacchus/run_semibin2). Two of those (both run_semibin2 cases) turned out
+# to already succeed on retry within minutes, no runtime change needed at
+# all -- proof a static number was never going to be the right lever for
+# every failure. Raising the same handful of numbers again each time a new
+# rule timed out was the whack-a-mole this was built to stop.
+#
+# A rule's CURRENT flat number still lives as the base_default argument at
+# its call site in the .smk file, so first-attempt behaviour is unchanged
+# by this move; only retries (added wherever a rule lacked one) get more
+# room. The evidence behind each original number is preserved below,
+# trimmed to the mem_mb entries that are still authoritative here -- the
+# runtime evidence moved into the docstrings/comments beside each rule's
+# runtime_escalate() call in its .smk file.
+#
+# Optional per-rule runtime overrides now live in config['runtime'] in
+# resources/config/config.yaml (parallel to config['mem_mb']), currently
+# empty -- add an entry there to override a base_default without editing
+# code, same as mem_mb.
+set-resources:
+  host_filter:
+    mem_mb: 16000
+  metaspades:
+    mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
+                        # input-scaled floor; this overrides it. defq nodes
+                        # are ~755 GB, so 256 GB still fits 3 jobs per node.
+  metaphlan:
+    mem_mb: 32000
+  taxonomy_kraken:
+    mem_mb: 220000
+  # Memory for these two comes from config['mem_mb'] (read by the rules),
+  # so set only mem_mb here to avoid overriding the config-driven mem.
+  make_concoct_coverage_table:
+    mem_mb: 64000       # ~7.8 GiB at the 8 GB cap on a 90-BAM reference
+  make_metabat2_coverage_table:
+    mem_mb: 64000       # jgi_summarize_bam_contig_depths holds every contig's
+                        # depth in memory across all BAMs -- it prints "all
+                        # depths will be in memory" and offers --checkpoint as
+                        # the alternative. At the 8 GB default it was OOM-killed
+                        # partway through the BAM list on an 89-sample vervet
+                        # cohort (180,875 contigs x 14 BAMs), dying silently
+                        # mid-read with no error line, which makes the cause
+                        # hard to see. Matches its concoct counterpart above.
+  run_DAS_Tool:
+    mem_mb: 32000       # DIAMOND SCG search OOMs at the 8 GB default (bacteria
+                        # set fails, archaea survives); matches run_checkm2's
+                        # DIAMOND allocation, the one that works
+  run_gunc:
+    mem_mb: 32000       # DIAMOND vs progenomes2.1 OOMs at the 8 GB default
+  run_genomad:
+    mem_mb: 32000       # marker DB search (MMseqs2/aragorn) over all contigs
+  run_checkv:
+    mem_mb: 16000       # DIAMOND/HMMER over just the viral contig subset
+latency-wait: 300      # isilon can lag well past 60s when a full run's outputs
+                       # land at once; 60 caused spurious MissingOutput failures
+                       # on make_mag_summary and consolidate_DAS_Tool_bins
+rerun-incomplete: true
+keep-going: true
+printshellcmds: true

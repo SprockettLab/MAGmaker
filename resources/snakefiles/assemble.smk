@@ -1,0 +1,271 @@
+rule metaspades:
+    """
+
+    Performs a metagenomic assembly on a sample using MetaSPAdes.
+
+    """
+    input:
+        fastq1=rules.host_filter.output.nonhost_R1,
+        fastq2=rules.host_filter.output.nonhost_R2
+    output:
+        contigs="output/assemble/metaspades/{sample}.contigs.fasta",
+    params:
+        temp_dir=directory("output/{sample}_temp/")
+    conda:
+        "../env/assemble.yaml"
+    threads:
+        config['threads']['spades']
+    benchmark:
+        "output/benchmarks/assemble/metaspades/{sample}_benchmark.txt"
+    log:
+        "output/logs/assemble/metaspades/{sample}.log"
+    retries:
+        config['retries'].get('metaspades', 2)
+    resources:
+        mem_mb=lambda wildcards, input: min(
+            config['mem_mb']['spades'],
+            max(16000, input.size_mb * 10)
+        ),
+        runtime=runtime_escalate('metaspades', base_default=1440)
+    shell:
+        """
+        rm -rf {params.temp_dir}
+        mkdir -p {params.temp_dir}
+        metaspades.py --threads {threads} \
+          -o {params.temp_dir}/ \
+          --memory $(({resources.mem_mb}/1024)) \
+          --pe1-1 {input.fastq1} \
+          --pe1-2 {input.fastq2} \
+          2> {log} 1>&2
+
+        # move and rename the contigs file into a permanent directory
+        mv {params.temp_dir}/contigs.fasta {output.contigs}
+        rm -rf {params.temp_dir}
+        """
+
+rule megahit:
+    """
+
+    Performs a metagenomic assembly on a sample using MEGAHIT.
+
+    """
+    input:
+        reads=lambda wildcards: nonhost_reads(wildcards.sample)
+    output:
+        contigs="output/assemble/megahit/{sample}.contigs.fasta"
+    params:
+        temp_dir=directory("output/{sample}_temp/"),
+        # MEGAHIT takes -1/-2 for paired input and -r for single-end.
+        read_args=lambda wildcards, input: (
+            "-1 {0} -2 {1}".format(*input.reads) if len(input.reads) == 2
+            else "-r {0}".format(input.reads[0])
+        )
+    conda:
+        "../env/assemble.yaml"
+    threads:
+        config['threads']['megahit']
+    benchmark:
+        "output/benchmarks/assemble/megahit/{sample}_benchmark.txt"
+    log:
+        "output/logs/assemble/megahit/{sample}.log"
+    retries:
+        config['retries'].get('megahit', 2)
+    resources:
+        mem_mb=lambda wildcards, input: min(
+            config['mem_mb']['megahit'],
+            max(16000, input.size_mb * 10)
+        ),
+        runtime=megahit_runtime
+    shell:
+        """
+        rm -rf {params.temp_dir}
+        megahit -t {threads} \
+          -o {params.temp_dir}/ \
+          --memory $(({resources.mem_mb}*1024*1024)) \
+          --keep-tmp-files \
+          {params.read_args} \
+          2> {log} 1>&2
+
+        mv {params.temp_dir}/final.contigs.fa {output.contigs}
+        rm -rf {params.temp_dir}
+        """
+
+# Fail at load, not at binning. A sample no configured assembler can handle
+# is otherwise trimmed, host filtered and profiled, then quietly dropped
+# before assembly: stage 1 reports success having produced no contigs for
+# it, and the only complaint comes much later from generate_binning_config.
+_unassemblable = [
+    sample for sample in samples
+    if not any(sample in set(samples_for_assembler(assembler))
+               for assembler in config['assemblers'])
+]
+if _unassemblable:
+    _fail(
+        "no configured assembler can assemble: %s\n\n"
+        "Configured assemblers: %s\n\n"
+        "metaSPAdes cannot take a single-end-only library, so single-end\n"
+        "samples need megahit:\n\n"
+        "    assemblers:\n"
+        "      - metaspades\n"
+        "      - megahit\n\n"
+        "Both may be listed. Paired-end samples are then assembled by both\n"
+        "and single-end samples by megahit alone."
+        % (", ".join(_unassemblable), ", ".join(config['assemblers']))
+    )
+
+
+def assembly_reports(template):
+    """in : a path template with {assembler} and {sample}
+       out: one path per assembler for each sample that assembler can run
+
+    A plain assembler x sample cross product would request metaSPAdes
+    contigs for single-end samples, which metaSPAdes cannot produce."""
+    return [template.format(assembler=assembler, sample=sample)
+            for assembler in config['assemblers']
+            for sample in samples_for_assembler(assembler)]
+
+
+rule quast:
+    """
+    Does an evaluation of assembly quality with Quast
+    """
+    input:
+        # Its own assembler only. Expanding over every configured assembler
+        # made the quast job for one assembler depend on all the others,
+        # which cannot hold once an assembler skips some samples.
+        lambda wildcards: expand("output/assemble/{assembler}/{sample}.contigs.fasta",
+                                 assembler=wildcards.assembler,
+                                 sample=wildcards.sample)
+    output:
+        report="output/assemble/{assembler}/quast/{sample}/report.txt",
+    params:
+        outdir=directory("output/assemble/{assembler}/quast/{sample}/")
+    threads:
+        1
+    log:
+        "output/logs/assemble/{assembler}/quast/{sample}.log"
+    conda:
+        "../env/assemble.yaml"
+    benchmark:
+        "output/benchmarks/assemble/{assembler}/quast/{sample}_benchmark.txt"
+    shell:
+        # quast is a quality REPORT, not something that should gate the
+        # pipeline -- the pre-existing `touch {output.report}` line only
+        # makes sense as a fallback for a failed/incomplete quast run, but
+        # under Snakemake's default `bash -euo pipefail` a non-zero
+        # quast.py exit aborted the script before that line ever ran,
+        # making the intended fallback dead code. Confirmed 2026-08-23:
+        # 5 samples in Yassour_2018 failed quast simultaneously (same
+        # exact second), taking the whole arm down with them despite this
+        # rule clearly never being meant to be fatal.
+        #
+        # `|| true` restores that intent. Also adds the log redirect the
+        # rule was missing entirely -- `log:` was declared but nothing
+        # ever wrote to it, so a real quast failure only ever showed up
+        # in the SLURM-captured job output, not the log path anyone would
+        # actually check.
+        """
+        quast.py \
+          -o {params.outdir} \
+          -t {threads} \
+          {input} \
+          2> {log} 1>&2 || true
+          touch {output.report}
+        """
+
+rule multiqc_assemble:
+    input:
+        lambda wildcards: assembly_reports(
+            "output/assemble/{assembler}/quast/{sample}/report.txt")
+    output:
+        "output/assemble/multiqc_assemble/multiqc.html"
+    params:
+        "--dirs " + config['params']['multiqc']  # Optional: extra parameters for multiqc.
+    log:
+        "output/logs/assemble/multiqc_assemble/multiqc_assemble.log"
+    benchmark:
+        "output/benchmarks/assemble/multiqc_assemble/multiqc_assemble_benchmark.txt"
+    wrapper:
+        "v3.1.0/bio/multiqc"
+
+rule metaquast:
+    """
+    Does an evaluation of assembly quality with Quast
+    """
+    input:
+        lambda wildcards: expand("output/assemble/{assembler}/{sample}.contigs.fasta",
+                                 assembler=wildcards.assembler,
+                                 sample=wildcards.sample)
+    output:
+        report="output/assemble/{assembler}/metaquast/{sample}/report.html"
+    threads:
+        config['threads']['metaquast']
+    log:
+        "output/logs/assemble/{assembler}/metaquast/{sample}.log"
+    params:
+        outdir=directory("output/assemble/{assembler}/metaquast/{sample}"),
+        refs=config['params']['metaquast']['reference_dir'],
+        extra=config['params']['metaquast']['extra']
+    conda:
+        "../env/assemble.yaml"
+    benchmark:
+        "output/benchmarks/assemble/{assembler}/metaquast/{sample}_benchmark.txt"
+    shell:
+        """
+        metaquast.py \
+          -r {params.refs} \
+          -o {params.outdir} \
+          -t {threads} \
+          {params.extra} \
+          {input}
+        """
+
+rule merge_assembly_stats:
+    """
+    Merges per-sample QUAST report.tsv files into a single project-wide assembly stats table.
+    """
+    input:
+        lambda wildcards: assembly_reports(
+            "output/assemble/{assembler}/quast/{sample}/report.txt")
+    output:
+        "output/assemble/assembly_stats.tsv"
+    log:
+        "output/logs/assemble/merge_assembly_stats.log"
+    run:
+        import os
+        import pandas as pd
+        frames = []
+        for report_txt in input:
+            parts = report_txt.split('/')
+            assembler = parts[2]
+            sample = parts[4]
+            report_tsv = report_txt.replace('report.txt', 'report.tsv')
+            if not os.path.exists(report_tsv):
+                continue
+            df = pd.read_csv(report_tsv, sep='\t', index_col=0, header=0)
+            row = df.iloc[:, 0].to_dict()
+            row['sample'] = sample
+            row['assembler'] = assembler
+            frames.append(row)
+        if frames:
+            merged = pd.DataFrame(frames)
+            cols = ['sample', 'assembler'] + [c for c in merged.columns if c not in ('sample', 'assembler')]
+            merged[cols].to_csv(output[0], sep='\t', index=False)
+        else:
+            open(output[0], 'w').close()
+
+
+rule multiqc_metaquast:
+    input:
+        lambda wildcards: assembly_reports(
+            "output/assemble/{assembler}/metaquast/{sample}/report.html")
+    output:
+        "output/assemble/multiqc_metaquast/multiqc.html"
+    params:
+        "--dirs " + config['params']['multiqc']  # Optional: extra parameters for multiqc.
+    log:
+        "output/logs/assemble/multiqc_metaquast/multiqc_metaquast.log"
+    benchmark:
+        "output/benchmarks/assemble/multiqc_metaquast/multiqc_metaquast_benchmark.txt"
+    wrapper:
+        "v3.1.0/bio/multiqc"

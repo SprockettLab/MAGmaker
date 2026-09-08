@@ -1,0 +1,625 @@
+
+def get_bam_list(sample, mapper, contig_pairings):
+    fps = expand("output/mapping/{mapper}/sorted_bams/{contig_pairings}_Mapped_To_{sample}.bam",
+    mapper = mapper,
+    sample = sample,
+    contig_pairings = contig_pairings[sample])
+    return(fps)
+
+def get_index_list(sample, mapper, contig_pairings):
+    fps = expand("output/mapping/{mapper}/sorted_bams/{contig_pairings}_Mapped_To_{sample}.bam.bai",
+    mapper = mapper,
+    sample = sample,
+    contig_pairings = contig_pairings[sample])
+    return(fps)
+
+rule make_metabat2_coverage_table:
+    """
+    Uses jgi_summarize_bam_contig_depths to generate a depth.txt file.
+    """
+    input:
+        bams = lambda wildcards: get_bam_list(wildcards.contig_sample, wildcards.mapper, contig_pairings)
+    output:
+        coverage_table="output/binning/metabat2/{mapper}/coverage_tables/{contig_sample}_coverage_table.txt"
+    conda:
+        "../env/binning.yaml"
+    benchmark:
+        "output/benchmarks/binning/metabat2/{mapper}/make_metabat2_coverage_table/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/metabat2/{mapper}/make_metabat2_coverage_table/{contig_sample}.log"
+    retries:
+        config['retries'].get('make_metabat2_coverage_table', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('make_metabat2_coverage_table', 64000),
+        runtime=runtime_escalate('make_metabat2_coverage_table', base_default=720)
+    shell:
+        """
+            jgi_summarize_bam_contig_depths --outputDepth {output.coverage_table} {input.bams} 2> {log}
+        """
+
+rule run_metabat2:
+    """
+    Runs Metabat2:
+    MetaBAT2 clusters metagenomic contigs into different "bins", each of which should correspond to a putative genome.
+
+    MetaBAT2 uses nucleotide composition information and source strain abundance (measured by depth-of-coverage by aligning the reads to the contigs) to perform binning.
+    """
+    input:
+        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                assembler = config['assemblers'],
+                contig_sample = wildcards.contig_sample),
+        coverage_table = lambda wildcards: expand("output/binning/metabat2/{mapper}/coverage_tables/{contig_sample}_coverage_table.txt",
+                mapper=config['mappers'],
+                contig_sample=wildcards.contig_sample)
+    output:
+        bins = directory("output/binning/metabat2/{mapper}/run_metabat2/{contig_sample}/")
+    params:
+        basename = "output/binning/metabat2/{mapper}/run_metabat2/{contig_sample}/{contig_sample}_bin",
+        min_contig_length = config['params']['metabat2']['min_contig_length'],
+        # MetaBAT2 defaults --seed to 0, which its source then replaces with
+        # time(0), so an unseeded run is not reproducible. Passed explicitly
+        # so two runs of this pipeline on the same data agree.
+        seed = config['params']['metabat2'].get(
+            'seed', config.get('seed', 8675309)),
+        extra = config['params']['metabat2']['extra']  # optional parameters
+    threads:
+        config['threads']['run_metabat2']
+    conda:
+        "../env/binning.yaml"
+    retries:
+        config['retries'].get('run_metabat2', 2)
+    benchmark:
+        "output/benchmarks/binning/metabat2/{mapper}/run_metabat2/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/metabat2/{mapper}/run_metabat2/{contig_sample}.log"
+    shell:
+        """
+            mkdir -p {output.bins}
+
+            # metabat2 exits non-zero with "[Error!] There were no large
+            # target contigs. Cannot proceed." when a sample's assembly has
+            # zero contigs >= --minContig. Same class of property-of-the-
+            # sample failure already tolerated for run_maxbin2, run_semibin2,
+            # and run_concoct -- confirmed 2026-08-22 on the same
+            # Ferretti_2018/SAMN06350074 assembly that also tripped
+            # concoct's equivalent check (0 contigs >=1500bp, only 1
+            # >=1000bp). Retries can't fix a property of the input.
+            #
+            # A second phrasing confirmed 2026-08-24 on Yassour_2018/
+            # SAMN09382536, a genuinely zero-contig assembly (not just
+            # sparse): "Number of columns (excluding the first column) in
+            # abundance data file is not even." A zero-contig assembly
+            # produces a degenerate abundance table (make_metabat2_coverage_
+            # table's own output), which metabat2 rejects on structure
+            # before it ever gets to the "no large target contigs" check --
+            # same underlying cause, different failure surface.
+            #
+            # Only these causes are tolerated. Every other metabat2
+            # failure stays fatal, same rationale as the other binners.
+            if ! metabat2 {params.extra} --numThreads {threads} \
+                --inFile {input.contigs} \
+                --outFile {params.basename} \
+                --abdFile {input.coverage_table} \
+                --minContig {params.min_contig_length} \
+                --seed {params.seed} \
+                2> {log} 1>&2; then
+                if grep -qE "There were no large target contigs|abundance data file is not even" {log}; then
+                    echo "metabat2: assembly too sparse/degenerate to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
+                    exit 0
+                fi
+                echo "metabat2 failed for a reason other than assembly sparsity" >> {log}
+                exit 1
+            fi
+        """
+
+
+rule make_maxbin2_coverage_table:
+    """
+       Commands to generate a coverage table using `samtools coverage` for input into maxbin2
+    """
+    input:
+        bams="output/mapping/{mapper}/sorted_bams/{read_sample}_Mapped_To_{contig_sample}.bam"
+    output:
+        coverage_table="output/binning/maxbin2/{mapper}/coverage_tables/{read_sample}_Mapped_To_{contig_sample}_coverage.txt"
+    conda:
+        "../env/binning.yaml"
+    benchmark:
+        "output/benchmarks/binning/maxbin2/{mapper}/make_maxbin2_coverage_table/{read_sample}_Mapped_To_{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/maxbin2/{mapper}/make_maxbin2_coverage_table/{read_sample}_Mapped_To_{contig_sample}.log"
+    retries:
+        config['retries'].get('make_maxbin2_coverage_table', 3)
+    resources:
+        runtime=runtime_escalate('make_maxbin2_coverage_table', base_default=240)
+    shell:
+        """
+          samtools coverage {input.bams} | \
+          tail -n +2 | \
+          sort -k1 | \
+          cut -f1,6 > {output.coverage_table} 2> {log}
+       """
+
+rule make_maxbin2_abund_list:
+    """
+       Combines the file paths from 'make_maxbin2_coverage_table' for MaxBin2
+    """
+    input:
+        lambda wildcards: expand("output/binning/maxbin2/{mapper}/coverage_tables/{read_sample}_Mapped_To_{contig_sample}_coverage.txt",
+                mapper = wildcards.mapper,
+                contig_sample = wildcards.contig_sample,
+                read_sample = contig_pairings[wildcards.contig_sample])
+    output:
+        abund_list = "output/binning/maxbin2/{mapper}/abundance_lists/{contig_sample}_abund_list.txt"
+    benchmark:
+        "output/benchmarks/binning/maxbin2/{mapper}/make_maxbin2_abund_list/{contig_sample}_abund_list_benchmark.txt"
+    log:
+        "output/logs/binning/maxbin2/{mapper}/make_maxbin2_abund_list/{contig_sample}_abund_list.log"
+    run:
+        with open(output.abund_list, 'w') as f:
+            for fp in input:
+                f.write('%s\n' % fp)
+
+
+rule run_maxbin2:
+    """
+    Runs MaxBin2:
+    MaxBin2 clusters metagenomic contigs (assembled contiguous genome fragments) into different "bins", each of which corresponds to a putative population genome. It uses nucleotide composition information, source strain abundance (measured by depth-of-coverage by aligning the reads to the contigs), and phylogenetic marker genes to perform binning through an Expectation-Maximization (EM) algorithm.
+    """
+    input:
+        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                assembler = config['assemblers'],
+                contig_sample = wildcards.contig_sample),
+        abund_list = lambda wildcards: expand("output/binning/maxbin2/{mapper}/abundance_lists/{contig_sample}_abund_list.txt",
+                mapper=config['mappers'],
+                contig_sample=wildcards.contig_sample)
+    output:
+        bins = directory("output/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}/")
+    params:
+        basename = "output/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}/{contig_sample}_bin",
+        prob = config['params']['maxbin2']['prob_threshold'],  # optional parameters
+        min_contig_length = config['params']['maxbin2']['min_contig_length'],
+        extra = config['params']['maxbin2']['extra']  # optional parameters
+    threads:
+        config['threads']['run_maxbin2']
+    conda:
+        "../env/binning.yaml"
+    benchmark:
+        "output/benchmarks/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/maxbin2/{mapper}/run_maxbin2/{contig_sample}.log"
+    retries:
+        config['retries'].get('run_maxbin2', 2)
+    resources:
+        # Never had an entry at all, in this rule or any profile -- silently
+        # ran on the bare 120 min default since this project began. Confirmed
+        # TIMEOUT 2026-08-20 (Pan_troglodytes_troglodytes/SAMN28679416, SLURM
+        # job 1563464, CANCELLED ... DUE TO TIME LIMIT at exactly 120 min):
+        # a 22-sample all-vs-all binning group means MaxBin2's own marker-
+        # gene search (FragGeneScan + HMMER over ~100k contigs) plus EM
+        # clustering across 15 abundance columns per contig, comparable in
+        # scope to make_concoct_coverage_table's ~90-BAM case. No direct
+        # timing measurement of a successful large-cohort run exists yet, so
+        # this is a moderate, evidence-motivated starting point rather than
+        # a guessed-large one -- retries + escalation cover the rest if it's
+        # still not enough, rather than guessing higher up front.
+        runtime=runtime_escalate('run_maxbin2', base_default=240)
+    shell:
+        """
+            mkdir -p {output.bins}
+
+            # MaxBin2 exits non-zero when an assembly carries too few
+            # single-copy marker genes to seed its EM, reporting "the medium of
+            # marker gene number <= 1". That is a property of the sample rather
+            # than a failure: host-dominated libraries reach it routinely, and
+            # metabat2 and concoct bin the same assembly without complaint.
+            # DAS_Tool needs only one bin set, so the sample is left with no
+            # maxbin2 bins instead of stopping the workflow.
+            #
+            # A second, distinct cause tolerated as of 2026-08-24: MaxBin2's
+            # bundled FragGeneScan call crashing outright ("Error running
+            # FragGeneScan"), reproduced identically 3x on Yassour_2018/
+            # SAMN09382539 (34-contig assembly). Checked and ruled out
+            # MaxBin2's own suggested cause -- this env's FragGeneScan is
+            # 1.32, well above the "1.18 or above" it warns about -- and
+            # FragGeneScan itself wrote nothing to its own .frag.out/.frag.err
+            # on every attempt, consistent with a real crash rather than a
+            # clean, further-diagnosable error. metabat2 and concoct already
+            # bin this same assembly without issue, so losing MaxBin2's
+            # contribution for this one sample doesn't lose the sample from
+            # the analysis, just one of three binners feeding into it.
+            #
+            # Every other non-zero exit is still a real error.
+            #
+            # run_MaxBin.pl is invoked via "$CONDA_PREFIX/bin/perl
+            # $CONDA_PREFIX/bin/run_MaxBin.pl", not the bare command name.
+            # Confirmed 2026-08-25 (MAGmaker_Rhinopithecus_bieti, all 8
+            # maxbin2 samples): its shebang is "#!/usr/bin/env perl", so
+            # running it as a bare command lets PATH pick ANY perl found
+            # first -- and if a different rule's/tool's conda env put its
+            # own perl earlier on PATH, that perl's @INC won't have this
+            # env's LWP::Simple, crashing with "Can't locate LWP/Simple.pm"
+            # before any real binning happens. This env's OWN perl (called
+            # by full path) has LWP::Simple in its @INC just fine --
+            # $CONDA_PREFIX (set by Snakemake's own conda-env activation
+            # for this exact rule) guarantees the right one regardless of
+            # what else is on PATH.
+            if ! "$CONDA_PREFIX/bin/perl" "$CONDA_PREFIX/bin/run_MaxBin.pl" -thread {threads} -prob_threshold {params.prob} \
+            -min_contig_length {params.min_contig_length} {params.extra} \
+            -contig {input.contigs} \
+            -abund_list {input.abund_list} \
+            -out {params.basename} \
+            2> {log} 1>&2; then
+                if grep -qE "cannot be binned|Error running FragGeneScan" {log}; then
+                    echo "MaxBin2 could not bin this sample (too few marker genes or a FragGeneScan crash); continuing with no maxbin2 bins." >> {log}
+                else
+                    exit 1
+                fi
+            fi
+        """
+
+rule cut_up_fasta:
+    """
+    Cut up fasta file in non-overlapping or overlapping parts of equal length.
+    Optionally creates a BED-file where the cutup contigs are specified in terms
+    of the original contigs. This can be used as input to concoct_coverage_table.py.
+    """
+    input:
+        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                assembler = config['assemblers'],
+                contig_sample = wildcards.contig_sample)
+    output:
+        bed="output/binning/concoct/{mapper}/contigs_10K/{contig_sample}.bed",
+        contigs_10K="output/binning/concoct/{mapper}/contigs_10K/{contig_sample}.fa"
+    conda:
+        "../env/concoct_linux.yaml"
+    params:
+        chunk_size=config['params']['concoct']['chunk_size'],
+        overlap_size=config['params']['concoct']['overlap_size']
+    benchmark:
+        "output/benchmarks/binning/concoct/{mapper}/cut_up_fasta/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/concoct/{mapper}/cut_up_fasta/{contig_sample}.log"
+    shell:
+        """
+          cut_up_fasta.py {input.contigs} \
+          -c {params.chunk_size} \
+          -o {params.overlap_size} \
+          --merge_last \
+          -b {output.bed} > {output.contigs_10K} 2> {log}
+        """
+
+rule make_concoct_coverage_table:
+    """
+    Generates table with per sample coverage depth.
+    Assumes the directory "/output/binning/{mapper}/mapped_reads/" contains sorted and indexed bam files where each contig file has has reads mapped against it from the selected prototypes.
+
+    """
+    input:
+        bed = "output/binning/concoct/{mapper}/contigs_10K/{contig_sample}.bed",
+        bam = lambda wildcards: get_bam_list(wildcards.contig_sample, config['mappers'], contig_pairings),
+        index = lambda wildcards: get_index_list(wildcards.contig_sample, config['mappers'], contig_pairings)
+    output:
+        coverage_table = "output/binning/concoct/{mapper}/coverage_tables/{contig_sample}_coverage_table.txt"
+    conda:
+        "../env/concoct_linux.yaml"
+    benchmark:
+        "output/benchmarks/binning/concoct/{mapper}/make_concoct_coverage_table/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/concoct/{mapper}/make_concoct_coverage_table/{contig_sample}.log"
+    retries:
+        config['retries'].get('make_concoct_coverage_table', 2)
+    resources:
+        mem_mb=config['mem_mb'].get('make_concoct_coverage_table', 64000),
+        runtime=runtime_escalate('make_concoct_coverage_table', base_default=720)
+    shell:
+        # concoct_coverage_table.py crashes with pandas.errors.EmptyDataError
+        # ("No columns to parse from file") when its input bed/bam data is
+        # empty -- confirmed 2026-08-24 on Yassour_2018 (an early-life infant
+        # cohort, where a sample's assembly can genuinely have zero contigs,
+        # unlike every adult-gut arm elsewhere in this project). A well-formed
+        # empty coverage_table.txt is the same "no data" result run_concoct
+        # already treats as zero contigs to bin, so this is tolerated the
+        # same way, not left to crash the rule.
+        """
+          if ! concoct_coverage_table.py {input.bed} \
+              {input.bam} > {output.coverage_table} 2> {log}; then
+              if grep -q "EmptyDataError" {log}; then
+                  echo "concoct_coverage_table.py: empty bed/bam input (likely a zero-contig assembly); writing empty coverage table" >> {log}
+                  : > {output.coverage_table}
+              else
+                  echo "concoct_coverage_table.py failed for a reason other than empty input" >> {log}
+                  exit 1
+              fi
+          fi
+        """
+
+rule run_concoct:
+    """
+    CONCOCT - Clustering cONtigs with COverage and ComposiTion
+    CONCOCT does unsupervised binning of metagenomic contigs by using nucleotide composition - kmer frequencies - and coverage data for multiple samples.
+    """
+    input:
+        contigs_10K=rules.cut_up_fasta.output.contigs_10K,
+        coverage_table=rules.make_concoct_coverage_table.output.coverage_table
+    output:
+        clustering = "output/binning/concoct/{mapper}/run_concoct/{contig_sample}/{contig_sample}_bins_clustering.csv"
+    params:
+        bins = "output/binning/concoct/{mapper}/run_concoct/{contig_sample}/{contig_sample,[A-Za-z0-9_]+}_bins",
+        min_contig_length=config['params']['concoct']['min_contig_length']
+    conda:
+        "../env/concoct_linux.yaml"
+    threads:
+        config['threads']['run_concoct']
+    benchmark:
+        "output/benchmarks/binning/concoct/{mapper}/run_concoct/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/concoct/{mapper}/run_concoct/{contig_sample}.log"
+    retries:
+        config['retries'].get('run_concoct', 2)
+    resources:
+        runtime=runtime_escalate('run_concoct', base_default=720)
+    shell:
+        """
+            mkdir -p output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}
+
+            # An empty coverage_table.txt (make_concoct_coverage_table's own
+            # tolerated empty-input case, added 2026-08-24) means there is no
+            # coverage data at all -- a different, more extreme situation
+            # than "some contigs but too few pass the length filter" below,
+            # and not one worth handing to concoct to fail on its own. Same
+            # empty-clustering-file outcome either way.
+            if [ ! -s {input.coverage_table} ]; then
+                echo "concoct: coverage table is empty (no coverage data); sample yields no bins" >> {log}
+                : > {output.clustering}
+                exit 0
+            fi
+
+            # concoct exits non-zero with "Not enough contigs pass the
+            # threshold filter" when a sample's assembly is too sparse for
+            # even one contig to clear -l {params.min_contig_length} --
+            # the same class of property-of-the-sample failure already
+            # tolerated for run_maxbin2 ("cannot be binned") and
+            # run_semibin2 ("no must-link pairs"/"basepairs"), confirmed
+            # 2026-08-22 on Ferretti_2018/SAMN06350074 after two identical
+            # retries (retries can't fix a property of the input). concoct's
+            # own clustering CSV format is headerless contig,cluster pairs,
+            # so an empty file is a well-formed zero-contigs-clustered
+            # result, not a guessed schema -- merge_cutup_clustering.py is
+            # concoct's own script and should treat it as the normal empty
+            # case.
+            #
+            # The message is NOT in {log}: concoct writes it via Python's
+            # own logging module to {params.bins}_log.txt, a second,
+            # separate file it creates itself, bypassing stdout/stderr (and
+            # therefore the 2>{log} redirect below) entirely. A first
+            # attempt at this fix (2026-08-22) grepped only {log} and never
+            # matched, so every occurrence stayed fatal despite the branch
+            # existing -- confirmed by comparing {log} (only "Up and
+            # running" + this branch's own fallback message) against
+            # {params.bins}_log.txt (the real "Not enough contigs..." line)
+            # for the same failed run. Check both files, since it's not
+            # certain every concoct version/failure path writes to the
+            # same one.
+            #
+            # Only that one cause is tolerated. Every other concoct failure
+            # stays fatal, same rationale as the maxbin2/semibin2 branches.
+            if ! concoct --threads {threads} -l {params.min_contig_length} \
+                --composition_file {input.contigs_10K} \
+                --coverage_file {input.coverage_table} \
+                -b {params.bins} \
+                2> {log} 1>&2; then
+                if grep -q "Not enough contigs pass the threshold filter" {log} {params.bins}_log.txt 2>/dev/null; then
+                    echo "concoct: assembly too sparse to bin (no contig >= {params.min_contig_length}bp); sample yields no bins" >> {log}
+                    : > {output.clustering}
+                    exit 0
+                fi
+                echo "concoct failed for a reason other than assembly sparsity" >> {log}
+                exit 1
+            fi
+
+            mv output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}/{wildcards.contig_sample}_bins_clustering_gt{params.min_contig_length}.csv output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}/{wildcards.contig_sample}_bins_clustering.csv
+        """
+
+rule merge_cutup_clustering:
+    """
+    Merges subcontig clustering into original contig clustering.
+    """
+    input:
+        bins = lambda wildcards: expand("output/binning/concoct/{mapper}/run_concoct/{contig_sample}/{contig_sample}_bins_clustering.csv",
+                mapper = config['mappers'],
+                contig_sample = wildcards.contig_sample)
+    output:
+        merged = "output/binning/concoct/{mapper}/merge_cutup_clustering/{contig_sample}_clustering_merged.csv"
+    conda:
+        "../env/concoct_linux.yaml"
+    benchmark:
+        "output/benchmarks/binning/concoct/{mapper}/merge_cutup_clustering/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/concoct/{mapper}/merge_cutup_clustering/{contig_sample}.log"
+    shell:
+        """
+            merge_cutup_clustering.py {input.bins} > {output.merged} 2> {log}
+        """
+
+rule extract_fasta_bins:
+    """
+    Extracts bins as individual FASTA.
+    """
+    input:
+        original_contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                    assembler = config['assemblers'],
+                    contig_sample = wildcards.contig_sample),
+        clustering_merged = rules.merge_cutup_clustering.output.merged
+    output:
+        fasta_bins = directory("output/binning/concoct/{mapper}/extract_fasta_bins/{contig_sample}_bins/")
+    conda:
+        "../env/concoct_linux.yaml"
+    benchmark:
+        "output/benchmarks/binning/concoct/{mapper}/extract_fasta_bins/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/concoct/{mapper}/extract_fasta_bins/{contig_sample}.log"
+    shell:
+        """
+            mkdir -p {output.fasta_bins}
+            extract_fasta_bins.py \
+            {input.original_contigs} \
+            {input.clustering_merged} \
+            --output_path {output.fasta_bins} \
+            2> {log}
+        """
+
+
+rule run_semibin2:
+    """
+    Bins contigs with SemiBin2, a fourth binner using self-supervised deep
+    learning over composition and multi-sample coverage.
+
+    Why a fourth binner at all: consolidation can only gain from a
+    candidate no other binner produced, so the value is in failing
+    DIFFERENTLY rather than in failing less. MetaBAT2, MaxBin2 and CONCOCT
+    are all composition-plus-coverage clustering with different distance
+    measures; a learned embedding is a different mechanism.
+
+    It takes the same BAMs the other binners' coverage tables are built
+    from, so multi-sample differential coverage -- which is the thing this
+    pipeline's prototype mapping exists to provide -- reaches it unchanged
+    and no new mapping is needed.
+
+    SEED. SemiBin2 documents --random-seed as reproducing results across
+    runs, unlike VAMB which states determinism is not guaranteed even when
+    seeded. That claim is why this tool was chosen and it is not taken on
+    trust: run the binner three times and compare before using it for
+    anything. --engine cpu is set for the same reason as much as for the
+    absence of a GPU, since GPU kernels are a common source of run-to-run
+    variation.
+
+    Its output layout differs between versions and options, so the bins are
+    normalised into the rule's own output directory rather than leaving
+    downstream rules to guess which of output_bins,
+    output_recluster_bins or output_prerecluster_bins was written.
+    """
+    input:
+        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
+                assembler = config['assemblers'],
+                contig_sample = wildcards.contig_sample),
+        bams = lambda wildcards: get_bam_list(wildcards.contig_sample, wildcards.mapper, contig_pairings),
+        bais = lambda wildcards: get_index_list(wildcards.contig_sample, wildcards.mapper, contig_pairings)
+    output:
+        bins = directory("output/binning/semibin2/{mapper}/run_semibin2/{contig_sample}/")
+    params:
+        work = "output/binning/semibin2/{mapper}/work/{contig_sample}",
+        seed = config['params'].get('semibin2', {}).get(
+            'random_seed', config.get('seed', 8675309)),
+        engine = config['params'].get('semibin2', {}).get('engine', 'cpu'),
+        environment = config['params'].get('semibin2', {}).get('environment', ''),
+        min_len = config['params'].get('semibin2', {}).get('min_contig_length', 1000),
+        extra = config['params'].get('semibin2', {}).get('extra', '')
+    threads:
+        config['threads'].get('run_semibin2', 16)
+    resources:
+        mem_mb = mem_escalate('run_semibin2', base_default=32000),
+        runtime = runtime_escalate('run_semibin2', base_default=360)
+    retries:
+        config['retries'].get('run_semibin2', 2)
+    conda:
+        "../env/semibin.yaml"
+    benchmark:
+        "output/benchmarks/binning/semibin2/{mapper}/run_semibin2/{contig_sample}_benchmark.txt"
+    log:
+        "output/logs/binning/semibin2/{mapper}/run_semibin2/{contig_sample}.log"
+    shell:
+        """
+            rm -rf {params.work}
+            mkdir -p {params.work} {output.bins}
+
+            # With --environment SemiBin2 uses a pretrained model and skips
+            # training entirely, which is faster and removes the stochastic
+            # step. Without it the model is trained from this sample, which
+            # makes no assumption about which published habitat the data
+            # resembles. Left empty by default: the built-in models are
+            # human, dog, cat, mouse, pig, chicken, ocean, soil and similar,
+            # and asserting that a wild primate gut is one of those is a
+            # claim about the biology, not a tuning choice.
+            if [ -n "{params.environment}" ]; then
+                MODEL="--environment {params.environment}"
+            else
+                MODEL="--self-supervised"
+            fi
+
+            # SemiBin2 needs at least one contig of >=4000 bp to form
+            # must-link pairs, and exits non-zero when an assembly has none.
+            # That is a property of the sample, not a pipeline failure: the
+            # sample yields no bins, exactly like the empty-output case
+            # below. Without this branch the non-zero exit propagates under
+            # `bash -euo pipefail` and takes down the whole arm, and the
+            # graceful "no bin directory" path further down is never
+            # reached. Retries cannot help -- the input is the problem, so
+            # all of them fail identically.
+            #
+            # Two distinct messages have now been seen for the same
+            # underlying "assembly too sparse to bin" situation, confirmed
+            # 2026-08-22 on Ferretti_2018/SAMN06350118: "no must-link pairs
+            # can be generated" (no contig >=4000bp) and "but only N
+            # contain(s) at least 1000 basepairs" (an assembly of just 7
+            # contigs, only 1 over even the 1000bp floor). A third phrasing
+            # confirmed 2026-08-24 on Yassour_2018/SAMN09382471: "contains 1
+            # contigs, but all are shorter than 1000 basepairs" (megahit
+            # collapsed the sample to a single contig under even the
+            # 1000bp floor). A fourth, even more extreme case confirmed the
+            # same day on Yassour_2018/SAMN09382536: "Input file ... is
+            # empty. Please check inputs." -- a zero-contig assembly, not
+            # just a sparse one. Zero-contig assemblies are specific to
+            # Yassour_2018 being an early-life (infant) cohort: infant stool
+            # can be host-DNA-dominated enough post-filtering that nothing
+            # survives to assemble, unlike every adult-gut arm elsewhere in
+            # this project. Each phrasing was missed by the narrower check
+            # before it, so this exact tolerated case kept getting retried
+            # as fatal -- pointlessly, since retries can't fix a property of
+            # the input.
+            #
+            # Only these causes are tolerated. Every other SemiBin2
+            # failure stays fatal, because a silent `|| true` here would
+            # turn real crashes into samples that quietly contribute
+            # nothing.
+            if ! SemiBin2 single_easy_bin \
+                -i {input.contigs} \
+                -b {input.bams} \
+                -o {params.work} \
+                --threads {threads} \
+                --min-len {params.min_len} \
+                --random-seed {params.seed} \
+                --engine {params.engine} \
+                ${{MODEL}} {params.extra} \
+                2> {log} 1>&2; then
+                if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs|all are shorter than [0-9]+ basepairs|Input file .* is empty" {log}; then
+                    echo "SemiBin2: assembly too fragmented/sparse to bin; sample yields no bins" >> {log}
+                    rm -rf {params.work}
+                    exit 0
+                fi
+                echo "SemiBin2 failed for a reason other than assembly fragmentation" >> {log}
+                exit 1
+            fi
+
+            # Normalise: whichever directory this version wrote into, the
+            # bins end up in the rule's declared output as plain .fa.
+            SRC=""
+            for d in output_bins output_recluster_bins output_prerecluster_bins bins; do
+                if [ -d "{params.work}/$d" ]; then SRC="{params.work}/$d"; break; fi
+            done
+            if [ -z "$SRC" ]; then
+                echo "SemiBin2 produced no bin directory; sample yields no bins" >> {log}
+                exit 0
+            fi
+            n=0
+            for f in "$SRC"/*.fa "$SRC"/*.fa.gz "$SRC"/*.fna "$SRC"/*.fna.gz; do
+                [ -e "$f" ] || continue
+                b=$(basename "$f"); b=${{b%.gz}}; b=${{b%.fna}}; b=${{b%.fa}}
+                case "$f" in
+                    *.gz) gunzip -c "$f" > {output.bins}/{wildcards.contig_sample}_$b.fa ;;
+                    *)    cp "$f" {output.bins}/{wildcards.contig_sample}_$b.fa ;;
+                esac
+                n=$((n+1))
+            done
+            echo "normalised $n bins from $SRC" >> {log}
+            rm -rf {params.work}
+        """

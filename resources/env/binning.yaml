@@ -1,0 +1,9 @@
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - samtools
+  - metabat2>=2.15
+  - maxbin2>=2.2
+  - fraggenescan>=1.31

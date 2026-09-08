@@ -1,0 +1,60 @@
+site_name: MAGmaker
+site_description: A Snakemake pipeline for end-to-end processing of metagenomic shotgun data into MAGs
+site_url: https://www.sprockettlab.com/MAGmaker/
+repo_url: https://github.com/SprockettLab/MAGmaker
+repo_name: SprockettLab/MAGmaker
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Pipeline overview: pipeline.md
+  - Installation: installation.md
+  - Configuration: configuration.md
+  - Database setup: databases.md
+  - Running the pipeline: running.md
+  - Output: output.md
+  - Viral / plasmid track: viral.md
+  - Running on DEMON (WFUSM): demon.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SprockettLab/MAGmaker

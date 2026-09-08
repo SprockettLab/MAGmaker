@@ -1,0 +1,9 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # SemiBin2. Pulls PyTorch, so this is a large environment and must be
+  # created ONCE before arms launch: concurrent creation of a heavy
+  # environment across a shared conda-prefix has already corrupted the
+  # package cache on this cluster.
+  - semibin >=2.4.0

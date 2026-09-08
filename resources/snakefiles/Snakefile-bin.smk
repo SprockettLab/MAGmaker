@@ -1,0 +1,92 @@
+import pandas as pd
+from os.path import join
+
+configfile: "config.yaml"
+
+# Loads the metadata table and defines metadata_table, samples, seqruns,
+# reads, get_read() and seqruns_for(). Shared with Snakefile so the two
+# stages cannot disagree about the sample sheet.
+include: "resources/snakefiles/common.smk"
+
+binning_fp = config['binning']
+
+binning_df = pd.read_csv(binning_fp,
+                         header=0,
+                         index_col=0,
+                         sep='\t',
+                         na_filter=False)
+
+def parse_groups(group_series):
+    groups = {}
+    for sample, grps in group_series.items():
+        if not grps:
+            continue
+        grp_list = grps.split(',')
+        for grp in grp_list:
+            if grp not in groups:
+                groups[grp] = [sample]
+            else:
+                groups[grp].append(sample)
+    return(groups)
+
+def make_pairings(read_grp, ctg_grp):
+    if read_grp.keys() != ctg_grp.keys():
+        raise ValueError('Not all keys in both from and to groups!')
+
+    pairings = []
+    contig_pairings = {}
+    for grp in read_grp.keys():
+        r = read_grp[grp]
+        c = ctg_grp[grp]
+
+        for i in r:
+            for  j in c:
+                pairings.append((i, j))
+                if j not in contig_pairings:
+                    contig_pairings[j] = [i]
+                else:
+                    contig_pairings[j].append(i)
+
+    return(pairings, contig_pairings)
+
+contig_groups = parse_groups(binning_df['Contig_Groups'])
+read_groups = parse_groups(binning_df['Read_Groups'])
+pairings, contig_pairings = make_pairings(read_groups, contig_groups)
+
+print('Contig samples: %s' % contig_groups)
+print('Read samples: %s' % read_groups)
+print('Pairings: %s' % pairings)
+print('Contig Pairings: %s' % contig_pairings)
+
+def get_contigs(sample, binning_df):
+    return(binning_df.loc[sample, 'Contigs'])
+
+include: "resources/snakefiles/qc.smk"
+include: "resources/snakefiles/assemble.smk"
+include: "resources/snakefiles/mapping.smk"
+include: "resources/snakefiles/binning.smk"
+include: "resources/snakefiles/selected_bins.smk"
+include: "resources/snakefiles/cmseq.smk"
+include: "resources/snakefiles/mag_qc.smk"
+include: "resources/snakefiles/virus.smk"
+
+
+rule select_bins:
+    input:
+        lambda wildcards: expand("output/selected_bins/{mapper}/" + SELECTED_FASTAS + "/{contig_sample}/.done",
+                                 mapper=config['mappers'],
+                                 contig_sample=contig_pairings.keys())
+
+rule bin_all:
+    # Only the binners listed in `binners:`. That key existed and was read
+    # by nothing: this target asked for all three unconditionally, and both
+    # consolidation tools took their bin sets from a hardcoded list, so
+    # removing a binner from the config changed nothing at all.
+    input:
+        lambda wildcards: binner_bin_dirs(list(contig_pairings.keys()))
+
+rule map_all:
+    input:
+        expand("output/mapping/{mapper}/sorted_bams/{pairing[0]}_Mapped_To_{pairing[1]}.bam",
+               mapper=config['mappers'],
+               pairing=pairings)
