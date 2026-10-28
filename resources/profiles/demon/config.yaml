@@ -4,13 +4,6 @@ default-resources:
   slurm_partition: defq
   mem_mb: 8000
   runtime: 120        # minutes; defq default is 120, max is 90 days
-  # demon120 has had no isilon mount since 2026-10-28, and every rule here
-  # reads envs/ or dbs/ or writes output on isilon. Remove the exclude once
-  # HPC restores the mount. A rule given its own slurm_extra under
-  # set-resources replaces this value, so repeat the exclude there.
-  # demon131 is deliberately NOT excluded: it failed every job in August
-  # 2026 (exit 127) but passed a pinned test job on 2026-10-28.
-  slurm_extra: "'--exclude=demon120'"
 
 jobs: 100
 
