@@ -8,6 +8,17 @@ configfile: "config.yaml"
 # stages cannot disagree about the sample sheet.
 include: "resources/snakefiles/common.smk"
 
+# Sample and sequencing-run identifiers never contain a path separator, but
+# Snakemake wildcards match across "/" unless they are constrained. Without
+# this, output/qc/fastp/se/<sample>.<run>.fastp.json is matchable by fastp_pe
+# by binding sample="se/<sample>", so the paired rule is selected for a
+# single-end report and dies in its input function with a KeyError naming a
+# sample that was never in the metadata. Constraining the two wildcards the
+# se/ subdirectory can be absorbed into sends each report to its own rule.
+wildcard_constraints:
+    sample=r"[^/]+",
+    seqrun=r"[^/]+"
+
 binning_fp = config['binning']
 
 binning_df = pd.read_csv(binning_fp,

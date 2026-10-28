@@ -50,16 +50,9 @@ SINGLE_END_READ = "SE"
 BLANK_VALUES = ["", "nan", "NaN", "None"]
 
 
-# Sample and sequencing-run identifiers never contain a path separator, but
-# Snakemake wildcards match across "/" unless they are constrained. Without
-# this, output/qc/fastp/se/<sample>.<run>.fastp.json is matchable by fastp_pe
-# by binding sample="se/<sample>", so the paired rule is selected for a
-# single-end report and dies in its input function with a KeyError naming a
-# sample that was never in the metadata. Constraining the two wildcards the
-# se/ subdirectory can be absorbed into sends each report to its own rule.
-wildcard_constraints:
-    sample=r"[^/]+",
-    seqrun=r"[^/]+"
+# The sample and seqrun wildcard constraints live in Snakefile and
+# Snakefile-bin, right after the include of this file: a directive here
+# would stop this file being plain Python, and the metadata tests exec it.
 
 
 def _fail(message):
