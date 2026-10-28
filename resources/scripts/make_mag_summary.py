@@ -466,9 +466,9 @@ for mapper in mappers:
 
             tax_entry = tax_map.get(
                 bin_name, (parse_gtdbtk_classification(''), '', '', ''))
+            tax_dict, full_classification, msa_percent, gtdbtk_warnings = tax_entry
             if bin_name not in tax_map or not str(full_classification).strip():
                 missing_tax.append(bin_name)
-            tax_dict, full_classification, msa_percent, gtdbtk_warnings = tax_entry
             if msa_percent == '':
                 msa_percent = msa_map.get(bin_name, '')
             tax_label = get_taxonomic_label(tax_dict)
