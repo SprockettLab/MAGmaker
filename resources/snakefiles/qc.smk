@@ -370,16 +370,29 @@ rule host_filter:
         "output/logs/qc/host_filter/{sample}.log"
     benchmark:
         "output/benchmarks/qc/host_filter/{sample}_benchmark.txt"
+    # DECISION: bowtie2 writes into a per-job directory under the rule's own
+    # output tree, and the finished files are renamed into place. It used to
+    # write {sample}_nonhost.1/.2 into the working directory and mv them, so
+    # a second job for the same sample (an orphaned SLURM job still running
+    # under a relaunched workflow) either moved its sibling's half-written
+    # file or failed on a file its sibling had already moved. mktemp keeps
+    # the two jobs apart, and a rename within one filesystem is atomic, so
+    # whichever job finishes last leaves complete files, never a mix.
     shell:
         """
+        mkdir -p output/qc/host_filter/tmp
+        TMP=$(mktemp -d output/qc/host_filter/tmp/{wildcards.sample}.XXXXXX)
+        trap 'rm -rf "$TMP"' EXIT
+
         bowtie2 -p {threads} -x {params.ref} \
           -1 {input.fastq1} -2 {input.fastq2} \
-          --un-conc-gz {wildcards.sample}_nonhost \
+          --un-conc-gz "$TMP/nonhost.R%.fastq.gz" \
           --no-unal \
-          2> {log} | samtools view -bS - > {output.host}
+          2> {log} | samtools view -bS - > "$TMP/host.bam"
 
-        mv {wildcards.sample}_nonhost.1 output/qc/host_filter/nonhost/{wildcards.sample}.R1.fastq.gz
-        mv {wildcards.sample}_nonhost.2 output/qc/host_filter/nonhost/{wildcards.sample}.R2.fastq.gz
+        mv "$TMP/nonhost.R1.fastq.gz" {output.nonhost_R1}
+        mv "$TMP/nonhost.R2.fastq.gz" {output.nonhost_R2}
+        mv "$TMP/host.bam" {output.host}
         """
 
 
@@ -414,13 +427,22 @@ rule host_filter_se:
         "output/logs/qc/host_filter/{sample}.se.log"
     benchmark:
         "output/benchmarks/qc/host_filter/{sample}.se_benchmark.txt"
+    # DECISION: per-job directory then rename, as in host_filter above, so
+    # two jobs for one sample never write the same file at once.
     shell:
         """
+        mkdir -p output/qc/host_filter/tmp
+        TMP=$(mktemp -d output/qc/host_filter/tmp/{wildcards.sample}.se.XXXXXX)
+        trap 'rm -rf "$TMP"' EXIT
+
         bowtie2 -p {threads} -x {params.ref} \
           -U {input.fastq} \
-          --un-gz {output.nonhost_SE} \
+          --un-gz "$TMP/nonhost.SE.fastq.gz" \
           --no-unal \
-          2> {log} | samtools view -bS - > {output.host}
+          2> {log} | samtools view -bS - > "$TMP/host.bam"
+
+        mv "$TMP/nonhost.SE.fastq.gz" {output.nonhost_SE}
+        mv "$TMP/host.bam" {output.host}
         """
 
 
