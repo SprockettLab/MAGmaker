@@ -10,7 +10,8 @@ rule metaspades:
     output:
         contigs="output/assemble/metaspades/{sample}.contigs.fasta",
     params:
-        temp_dir=directory("output/{sample}_temp/")
+        temp_dir=directory("output/{sample}_temp/"),
+        extra=config['params']['metaspades']['extra']
     conda:
         "../env/assemble.yaml"
     threads:
@@ -36,6 +37,7 @@ rule metaspades:
           --memory $(({resources.mem_mb}/1024)) \
           --pe1-1 {input.fastq1} \
           --pe1-2 {input.fastq2} \
+          {params.extra} \
           2> {log} 1>&2
 
         # move and rename the contigs file into a permanent directory

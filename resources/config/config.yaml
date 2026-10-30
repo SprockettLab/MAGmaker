@@ -183,6 +183,13 @@ params:
 
   # ── 2  ASSEMBLY ────────────────────────────────────────────────────────────
 
+  metaspades:
+    # Extra metaspades.py arguments. SPAdes guesses the quality encoding
+    # from the first reads and aborts with "Failed to determine offset!"
+    # when every quality is the same character, as in SRA Lite downloads
+    # (all bases '?', Q30 in Phred+33). Set '--phred-offset 33' for those.
+    extra: ''
+
   metaquast:
     reference_dir: "resources/db/metaquast/"
     extra: ''
