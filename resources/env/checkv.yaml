@@ -2,4 +2,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - checkv>=1.0.1
+  # Floor raised to the current release; see the note in genomad.yaml.
+  # CheckV quality tiers decide which contigs enter a vOTU catalog, so the
+  # version that produced a given table is worth recording with it.
+  - checkv>=1.1.1
