@@ -4,7 +4,7 @@ channels:
   - defaults
 dependencies:
   - python>=3.9
-  - sourmash>=4.0
+  - sourmash>=4.9.4
   - scikit-bio>=0.5
   - scikit-learn
   - numpy
