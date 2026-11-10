@@ -1,3 +1,6 @@
+# BoarderCollie, cloned by the workflow on its first run
+resources/external/
+
 # bowtie2 indexes
 resources/db/bt2/*
 

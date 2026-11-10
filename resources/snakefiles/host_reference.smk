@@ -1,5 +1,7 @@
 import copy
 import os
+import shutil
+import subprocess
 import sys
 from os.path import abspath, basename, exists, join, normpath, splitext
 
@@ -22,6 +24,72 @@ from os.path import abspath, basename, exists, join, normpath, splitext
 # BoarderCollie mode: the joined reference and its index are per project.
 HOST_REFERENCE_DIR = "output/qc/host_reference"
 
+# BoarderCollie is fetched by MAGmaker itself: cloned on the first run into
+# resources/external/BoarderCollie (git-ignored) at the version below, and
+# moved to that version whenever MAGmaker pins a newer one. To use a newer
+# BoarderCollie, change BOARDERCOLLIE_VERSION to its commit and test.
+BOARDERCOLLIE_URL = "https://github.com/SprockettLab/BoarderCollie.git"
+BOARDERCOLLIE_VERSION = "7aa1fe41f3d38d39da2373fd674e479e8c2504f5"
+BOARDERCOLLIE_DEFAULT_DIR = normpath(join(workflow.current_basedir, '..',
+                                          'external', 'BoarderCollie'))
+# Kept inside .git, so it never shows as a change in the clone: marks a
+# clone MAGmaker made and may move to another version. A clone without it
+# (one named in host_filter.boardercollie_dir) is used as it is.
+MANAGED_MARK = join('.git', 'magmaker-managed')
+
+
+def _git(*args, cwd=None):
+    """Run git; raise ValueError with its message on failure. A clone that
+    needs a login fails at once instead of waiting for a password."""
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
+    result = subprocess.run(['git', *args], cwd=cwd, env=env,
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError("git " + " ".join(args) + " failed:\n"
+                         + (result.stderr or result.stdout).strip())
+    return result.stdout.strip()
+
+
+def ensure_boardercollie(clone, url, version):
+    """in : clone folder, repository URL, commit
+       out: nothing; afterwards a MAGmaker-made clone is at that commit
+
+    A missing clone is made in a folder beside it and renamed into place,
+    so a run that is interrupted, or two runs starting at once, never leave
+    half a clone where the next run would take it for a whole one. A clone
+    without MAGmaker's mark is never changed."""
+    if exists(clone):
+        if not exists(join(clone, MANAGED_MARK)):
+            return
+        if _git('rev-parse', 'HEAD', cwd=clone) == version:
+            return
+        if _git('status', '--porcelain', '--untracked-files=no', cwd=clone):
+            raise ValueError(
+                f"{clone} has local changes, so MAGmaker will not move it to "
+                f"BoarderCollie {version}. Remove the folder and run again; "
+                "it is cloned again.")
+        print(f"MAGmaker: moving BoarderCollie in {clone} to {version}",
+              file=sys.stderr)
+        _git('fetch', '--quiet', 'origin', cwd=clone)
+        _git('checkout', '--quiet', '--detach', version, cwd=clone)
+        return
+    print(f"MAGmaker: cloning BoarderCollie {version} into {clone}",
+          file=sys.stderr)
+    os.makedirs(os.path.dirname(clone), exist_ok=True)
+    partial = f"{clone}.partial.{os.getpid()}"
+    try:
+        _git('clone', '--quiet', url, partial)
+        _git('checkout', '--quiet', '--detach', version, cwd=partial)
+        open(join(partial, MANAGED_MARK), 'w').close()
+        try:
+            os.rename(partial, clone)
+        except OSError:
+            # Another run made the clone first; use that one.
+            if not exists(join(clone, MANAGED_MARK)):
+                raise
+    finally:
+        shutil.rmtree(partial, ignore_errors=True)
+
 
 def _host_fail(message):
     """Abort with a message readable without a Python traceback."""
@@ -42,17 +110,18 @@ def boardercollie_setup(hf, bc_config):
 
     The module config is a copy with reference_out filled in; the caller's
     config is not changed."""
-    clone = hf.get('boardercollie_dir')
-    if not clone:
-        raise ValueError(
-            "host_filter.boardercollie_dir is not set. It is the path of a "
-            "local clone of BoarderCollie.")
+    clone = hf.get('boardercollie_dir') or BOARDERCOLLIE_DEFAULT_DIR
+    ensure_boardercollie(clone,
+                         hf.get('boardercollie_url') or BOARDERCOLLIE_URL,
+                         hf.get('boardercollie_version')
+                         or BOARDERCOLLIE_VERSION)
     snakefile = join(clone, 'workflow', 'Snakefile')
     if not exists(snakefile):
         raise ValueError(
             f"No BoarderCollie workflow at {snakefile}.\n"
             "host_filter.boardercollie_dir must be a clone of "
-            "github.com/SprockettLab/BoarderCollie.")
+            "github.com/SprockettLab/BoarderCollie, or left out so that "
+            "MAGmaker fetches BoarderCollie itself.")
 
     bc = copy.deepcopy(bc_config or {})
     hosts = bc.get('hosts') or []

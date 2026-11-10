@@ -176,7 +176,7 @@ Set `params.checkv.db_path` to the `checkv-db-v1.x` directory.
 
 ## Host genome
 
-Host reads are removed by mapping with bowtie2 to a host reference. By default the reference is built by [BoarderCollie](https://github.com/SprockettLab/BoarderCollie) from the genomes listed under `boardercollie.hosts` (NCBI accessions or local FASTA files): it downloads them, removes foreign DNA found in the assemblies, and joins them. It needs a local BoarderCollie clone (`host_filter.boardercollie_dir`) and the NCBI FCS-GX database (`boardercollie.fcs_gx_db`, ~520 GB). See [Configuration](configuration.md#host-filter).
+Host reads are removed by mapping with bowtie2 to a host reference. By default the reference is built by [BoarderCollie](https://github.com/SprockettLab/BoarderCollie) from the genomes listed under `boardercollie.hosts` (NCBI accessions or local FASTA files): it downloads them, removes foreign DNA found in the assemblies, and joins them. MAGmaker fetches BoarderCollie itself on the first run. It needs the NCBI FCS-GX database (`boardercollie.fcs_gx_db`, ~520 GB). See [Configuration](configuration.md#host-filter).
 
 To use an existing FASTA as it is instead:
 
