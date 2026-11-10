@@ -240,6 +240,34 @@ def cmseq_enabled():
         'true', '1', 'yes')
 
 
+def vsc_enabled():
+    """Whether MetaPhlAn also profiles Viral Sequence Clusters.
+
+    On by default. VSC profiling costs one extra bowtie2 pass of the same
+    reads inside the metaphlan job, and needs no database beyond the
+    {index}_VSG.fna and {index}_VINFO.csv that ship with the CHOCOPhlAn
+    index already in use.
+
+    It is a toggle rather than always-on because of one failure mode:
+    metaphlan exits non-zero when a sample yields no viral mappings at all
+    (metaphlan.py, "No viral mappings in the viral sam file"). That would
+    take down the whole metaphlan job for that sample, taxonomic profile
+    included, not just the viral part. A host whose viruses are poorly
+    represented in the VSC database is the case where this bites. Three
+    vervet samples of 88 (the smallest, median and largest by read volume)
+    were tested on 2026-11-10 and all three produced 6 to 16 clusters, so
+    the abort was never provoked -- which is not the same as showing it
+    cannot happen on the other 85.
+
+    Set params.metaphlan.profile_vsc: false in the config, or pass
+    --skip-vsc for one run."""
+    if str(config.get('skip_vsc', '')).strip().lower() in ('true', '1', 'yes'):
+        return False
+    return str(
+        config.get('params', {}).get('metaphlan', {}).get('profile_vsc', True)
+    ).strip().lower() not in ('false', '0', 'no')
+
+
 # Which tool reconciles the three per-binner bin sets into one set of MAGs,
 # and the directory its selected FASTAs land in. Everything downstream of
 # selection -- checkm2, gunc, gtdbtk, cmseq, mag_summary -- reads that one

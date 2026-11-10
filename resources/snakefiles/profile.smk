@@ -146,8 +146,11 @@ rule metaphlan:
         bt2="output/profile/metaphlan/bowtie2s/{sample}.bowtie2.bz2",
         sam="output/profile/metaphlan/sams/{sample}.sam.bz2",
         profile="output/profile/metaphlan/profiles/{sample}.txt",
-        # Viral Sequence Cluster table, written beside the taxonomic profile.
-        vsc="output/profile/metaphlan/profiles/{sample}_vsc.csv"
+        # Viral Sequence Cluster table, written beside the taxonomic
+        # profile. Declared only when VSC profiling is on, so a run with it
+        # off does not promise a file it will never write.
+        **({"vsc": "output/profile/metaphlan/profiles/{sample}_vsc.csv"}
+           if vsc_enabled() else {})
     retries:
         config['retries'].get('metaphlan', 2)
     resources:
@@ -164,6 +167,12 @@ rule metaphlan:
     params:
         db_name=config['params']['metaphlan']['db_name'],
         other=config['params']['metaphlan']['other'],
+        # Empty when VSC profiling is off, so the same shell serves both.
+        vsc_args=lambda wildcards: (
+            "--profile_vsc --vsc_out "
+            f"output/profile/metaphlan/profiles/{wildcards.sample}_vsc.csv"
+            if vsc_enabled() else ""
+        ),
         # MetaPhlAn takes its inputs as one comma-separated argument.
         read_arg=lambda wildcards, input: ",".join(input.reads)
     benchmark:
@@ -182,8 +191,7 @@ rule metaphlan:
         --mapout {output.bt2} \
         -s {output.sam} \
         -o {output.profile} \
-        --profile_vsc \
-        --vsc_out {output.vsc} \
+        {params.vsc_args} \
         {params.other} \
         2> {log} 1>&2
         """

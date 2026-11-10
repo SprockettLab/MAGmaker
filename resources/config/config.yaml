@@ -207,6 +207,13 @@ params:
     # --ignore_ksgbs / --ignore_usgbs. Passing either to 4.2 aborts the run
     # with "unrecognized arguments".
     other: ""
+    # Also profile Viral Sequence Clusters: a second bowtie2 pass of the
+    # same reads against the viral markers of this index, inside the same
+    # metaphlan job, written to {sample}_vsc.csv beside the profile. Needs
+    # no extra database. Set false (or pass --skip-vsc) if a sample with no
+    # viral mappings aborts its metaphlan job; that failure takes the
+    # taxonomic profile down with it, not just the viral table.
+    profile_vsc: true
 
   kraken2:
     levels: 'P,C,O,F,G,S'

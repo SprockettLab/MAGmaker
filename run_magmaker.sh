@@ -26,6 +26,8 @@
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-cmseq                            # no strain heterogeneity
 #   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --skip-vsc                              # no viral cluster profiling
+#   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --binette                               # Binette instead of DAS_Tool
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-gtdbtk-classify                  # MSA_Percent, no pplacer
@@ -68,6 +70,7 @@ for arg in "$@"; do
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
+        --skip-vsc)       SKIP_CONFIG+=("skip_vsc=True") ;;
         # --------------------------------------------------------------
         # Everything collected here becomes ONE --config on each snakemake
         # command line. Snakemake's --config takes nargs="*" with argparse's
