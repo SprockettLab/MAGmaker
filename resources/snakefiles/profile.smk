@@ -121,6 +121,23 @@ rule download_metaphlan_db:
 rule metaphlan:
     """
     Performs taxonomic profiling using MetaPhlAn4.
+
+    Viral Sequence Cluster (VSC) profiling runs in the SAME invocation: after
+    the taxonomic profile is written, metaphlan maps the same reads a second
+    time against the viral marker sequences of the index ({index}_VSG.fna and
+    {index}_VINFO.csv, both shipped with the database) and writes a per-cluster
+    breadth-of-coverage table. Columns: M-Group/Cluster, genomeName, len,
+    breadth_of_coverage, mapping_reads_count, RPKM, depth_of_coverage_mean,
+    depth_of_coverage_median, plus the descriptive fields of VINFO.
+
+    --vsc_breadth is deliberately NOT passed, so MetaPhlAn's own default
+    applies: 0.75 for short reads, 0.5 for long reads. Passing it would fix
+    one value for both.
+
+    This detects KNOWN viral clusters from reads, which is a different
+    question from assembly-based viral discovery (geNomad in the virus track).
+    It finds viruses that never assembled, but only ones already in the VSC
+    database.
     """
     input:
         reads=lambda wildcards: nonhost_reads(wildcards.sample),
@@ -128,7 +145,9 @@ rule metaphlan:
     output:
         bt2="output/profile/metaphlan/bowtie2s/{sample}.bowtie2.bz2",
         sam="output/profile/metaphlan/sams/{sample}.sam.bz2",
-        profile="output/profile/metaphlan/profiles/{sample}.txt"
+        profile="output/profile/metaphlan/profiles/{sample}.txt",
+        # Viral Sequence Cluster table, written beside the taxonomic profile.
+        vsc="output/profile/metaphlan/profiles/{sample}_vsc.csv"
     retries:
         config['retries'].get('metaphlan', 2)
     resources:
@@ -163,6 +182,8 @@ rule metaphlan:
         --mapout {output.bt2} \
         -s {output.sam} \
         -o {output.profile} \
+        --profile_vsc \
+        --vsc_out {output.vsc} \
         {params.other} \
         2> {log} 1>&2
         """
