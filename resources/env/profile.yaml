@@ -1,8 +1,10 @@
 channels:
-  - biobakery
+  # The biobakery channel is deliberately NOT listed. Under strict channel
+  # priority it supplies an hclust2 build that requires matplotlib <2.0,
+  # which forces numpy 1.11 and makes a current metaphlan unsolvable here.
+  # metaphlan, kraken2, bracken and krona all come from bioconda.
   - conda-forge
   - bioconda
-  - defaults
 dependencies:
   - metaphlan>=4.2.6
   - kraken2>=2.17.2
