@@ -103,11 +103,18 @@ rule download_metaphlan_db:
         "output/logs/profile/download_metaphlan_db/download_metaphlan_db.log"
     benchmark:
         "output/benchmarks/profile/download_metaphlan_db/download_metaphlan_db_benchmark.txt"
+    params:
+        db_name=config['params']['metaphlan']['db_name']
     shell:
+        # The index is named explicitly rather than downloaded as 'latest'.
+        # With 'latest' this rule fetched whatever was current on the day it
+        # ran, while the metaphlan rule below profiles against db_name from
+        # the config, so the downloaded index and the one used could differ
+        # with nothing recording that they had.
         """
         metaphlan --install \
-            --bowtie2db {output} \
-            --index latest \
+            --db_dir {output} \
+            -x {params.db_name} \
             2> {log} 1>&2
         """
 
@@ -151,9 +158,9 @@ rule metaphlan:
         metaphlan {params.read_arg} \
         --input_type fastq \
         --nproc {threads} \
-        --bowtie2db {input.db_path} \
-        --index {params.db_name} \
-        --bowtie2out {output.bt2} \
+        --db_dir {input.db_path} \
+        -x {params.db_name} \
+        --mapout {output.bt2} \
         -s {output.sam} \
         -o {output.profile} \
         {params.other} \
