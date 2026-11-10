@@ -74,6 +74,14 @@ rule run_metabat2:
         "output/logs/binning/metabat2/{mapper}/run_metabat2/{contig_sample}.log"
     shell:
         """
+            # Clear the bin directory FIRST, on every attempt. It is a
+            # directory() output, and Snakemake does not empty one between
+            # attempts: bins written by an attempt that was killed survive
+            # and are then consumed alongside the new ones by the
+            # consolidation step, changing the bin set with nothing to show
+            # it. Same reasoning as run_gunc, run_checkm2, run_genomad and
+            # run_checkv, which already clear their output directories.
+            rm -rf {output.bins}
             mkdir -p {output.bins}
 
             # metabat2 exits non-zero with "[Error!] There were no large
@@ -205,6 +213,14 @@ rule run_maxbin2:
         runtime=runtime_escalate('run_maxbin2', base_default=240)
     shell:
         """
+            # Clear the bin directory FIRST, on every attempt. It is a
+            # directory() output, and Snakemake does not empty one between
+            # attempts: bins written by an attempt that was killed survive
+            # and are then consumed alongside the new ones by the
+            # consolidation step, changing the bin set with nothing to show
+            # it. Same reasoning as run_gunc, run_checkm2, run_genomad and
+            # run_checkv, which already clear their output directories.
+            rm -rf {output.bins}
             mkdir -p {output.bins}
 
             # MaxBin2 exits non-zero when an assembly carries too few
@@ -360,6 +376,14 @@ rule run_concoct:
         runtime=runtime_escalate('run_concoct', base_default=720)
     shell:
         """
+            # Clear the bin directory FIRST, on every attempt. It is a
+            # directory() output, and Snakemake does not empty one between
+            # attempts: bins written by an attempt that was killed survive
+            # and are then consumed alongside the new ones by the
+            # consolidation step, changing the bin set with nothing to show
+            # it. Same reasoning as run_gunc, run_checkm2, run_genomad and
+            # run_checkv, which already clear their output directories.
+            rm -rf output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}
             mkdir -p output/binning/concoct/{wildcards.mapper}/run_concoct/{wildcards.contig_sample}
 
             # An empty coverage_table.txt (make_concoct_coverage_table's own
@@ -530,6 +554,14 @@ rule run_semibin2:
     shell:
         """
             rm -rf {params.work}
+            # Clear the bin directory FIRST, on every attempt. It is a
+            # directory() output, and Snakemake does not empty one between
+            # attempts: bins written by an attempt that was killed survive
+            # and are then consumed alongside the new ones by the
+            # consolidation step, changing the bin set with nothing to show
+            # it. Same reasoning as run_gunc, run_checkm2, run_genomad and
+            # run_checkv, which already clear their output directories.
+            rm -rf {params.work} {output.bins}
             mkdir -p {params.work} {output.bins}
 
             # With --environment SemiBin2 uses a pretrained model and skips
