@@ -60,6 +60,7 @@ To use the test host index, set in `config.yaml`:
 
 ```yaml
 host_filter:
+  boardercollie: false
   db_dir: resources/test/test_dbs
   genome: resources/db/bt2/GCA_000001635.9.fna
 ```

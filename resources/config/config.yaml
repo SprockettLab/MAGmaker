@@ -437,22 +437,58 @@ params:
 # ═════════════════════════════════════════════════════════════════════════════
 # HOST FILTER
 # ═════════════════════════════════════════════════════════════════════════════
-# Stage 1. The index stem is the FASTA filename with its extension removed,
-# so genome=/path/human.fna expects /path/human.*.bt2 in db_dir.
+# Stage 1. Reads are mapped with bowtie2 against one host reference; what
+# does not map goes on. The reference is given in one of two ways.
 #
-# A complete existing index is detected and reused; the index is only built
-# when one is absent or incomplete. Nothing needs to be touched by hand.
+# 1. boardercollie: true (default; the way for a first run). List the host's
+#    genomes under boardercollie.hosts below and leave genome empty.
+#    BoarderCollie downloads them, screens them for foreign DNA with FCS-GX,
+#    removes what fails its tests, and joins them into one reference written
+#    to <db_dir>/<host name>.fna (with <host name>.fna.members.tsv beside it).
+#    The bowtie2 index <db_dir>/<host name>.* is tied to that file's md5 and
+#    rebuilt whenever its contents change. Genomes already downloaded or
+#    cleaned with the same settings are reused, never redone. Screening needs
+#    a node with ~520 GB free for the FCS-GX database.
 #
-# Pre-built indexes on demon (/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/):
-#   human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna
+# 2. boardercollie: false. genome is an existing FASTA used as it is; its
+#    index is <db_dir>/<FASTA file name without extension>.*, reused when
+#    complete and built otherwise. Project configs written before
+#    BoarderCollie need  boardercollie: false  added to keep working as before.
 #
-# For test runs (mouse chr1):
-#   db_dir: resources/test/test_dbs
-#   genome: resources/test/test_dbs/GCA_000001635.9.fna
+#    Pre-built on demon:
+#      db_dir: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14
+#      genome: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna
+#    For test runs (mouse chr1):
+#      db_dir: resources/test/test_dbs
+#      genome: resources/test/test_dbs/GCA_000001635.9.fna
+#
+# The host FASTA files named in either way are only read, never changed.
 
 host_filter:
-  db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14"
-  genome: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_genomic.fna"
+  boardercollie: true
+  # A local clone of github.com/SprockettLab/BoarderCollie, loaded as a
+  # Snakemake module (its steps appear as boardercollie_*).
+  boardercollie_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/software/BoarderCollie"
+  # One directory per host setup: two configs writing the same host name
+  # into one db_dir would overwrite each other's reference.
+  db_dir: "output/qc/host_reference"
+  genome: ""
+
+# BoarderCollie's own config (used only with host_filter.boardercollie: true).
+# Every setting is described in BoarderCollie's config/config.example.yaml.
+# Exactly one host; MAGmaker sets its reference_out, so leave that out.
+boardercollie:
+  library_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/boardercollie/library"
+  index_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/boardercollie/indexes"
+  work_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/boardercollie/work"
+  fcs_gx_db: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/fcs_gx/gxdb"
+  hosts:
+    - name: Homo_sapiens
+      genomes:
+        - GCA_000001405.29        # GRCh38.p14
+      ladder: auto
+  settings:
+    download_only: false      # true: join the genomes as downloaded (no screening or cleaning)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -93,15 +93,50 @@ Both assemblers can run in parallel. MEGAHIT is the default — faster and more 
 
 ### Host filter
 
+Reads are mapped with bowtie2 against one host reference, given in one of two ways.
+
+**1. BoarderCollie (default).** List the host's genomes and leave `genome` empty:
+
 ```yaml
 host_filter:
+  boardercollie: true
+  boardercollie_dir: /path/to/BoarderCollie   # a local clone
+  db_dir: output/qc/host_reference
+  genome: ""
+
+boardercollie:
+  library_dir: /path/to/boardercollie/library
+  index_dir: /path/to/boardercollie/indexes
+  work_dir: /path/to/boardercollie/work
+  fcs_gx_db: /path/to/fcs_gx/gxdb
+  hosts:
+    - name: Homo_sapiens
+      genomes: [GCA_000001405.29]
+      ladder: auto
+```
+
+[BoarderCollie](https://github.com/SprockettLab/BoarderCollie), loaded as a Snakemake module, downloads the genomes, screens them for foreign DNA with NCBI FCS-GX, removes the regions that fail its tests, and joins the cleaned genomes into one reference at `<db_dir>/<host name>.fna`, with `<host name>.fna.members.tsv` listing what went into it. Its steps appear in the job list as `boardercollie_*`. The `boardercollie` section is a BoarderCollie config (every setting is described in its `config/config.example.yaml`), with two rules: exactly one host, and no `reference_out` (MAGmaker sets it). A genome is given as an NCBI accession or as `{fasta: /path/genome.fna, tax_id: 9606}`. `settings: download_only: true` joins the genomes as downloaded, without screening or cleaning.
+
+Genomes already downloaded, and genomes already cleaned with the same settings, are reused from the library rather than redone. FCS-GX holds its ~520 GB database in memory, so the first screen of a genome needs a large-memory node.
+
+The bowtie2 index `<db_dir>/<host name>.*` is tied to the reference's contents: its md5 is written to `<host name>.reference.md5` after a build, and the index is reused only when that md5 matches the current reference. The reference path stays the same when the genomes or settings change, so without this an index of the old reference would be reused silently.
+
+Use one `db_dir` per host setup: two configs writing the same host name into one `db_dir` would overwrite each other's reference.
+
+**2. An existing FASTA, used as it is.**
+
+```yaml
+host_filter:
+  boardercollie: false
   genome: /path/to/host_genome.fna
   db_dir: /path/to/bt2_index_dir/
 ```
 
-The index name is derived from the FASTA filename stem, so `genome: /path/human.fna` expects `/path/human.*.bt2` in `db_dir`.
+The index name is derived from the FASTA filename stem, so `genome: /path/human.fna` expects `/path/human.*.bt2` in `db_dir`. Project configs written before BoarderCollie was added need `boardercollie: false` added; without it the run stops with a message saying so, rather than switching to BoarderCollie.
 
 A **complete** existing index is detected and reused — useful for shared references, where rebuilding a human genome costs hours. The index is built only when all six parts (`.1`, `.2`, `.3`, `.4`, `.rev.1`, `.rev.2`, in either `.bt2` or `.bt2l` form) are not already present, so a partial index left by an interrupted build is rebuilt rather than silently accepted. Completion is tracked with a `<stem>.bowtie2_build.done` sentinel, since bowtie2 chooses between the small and large index layouts based on reference size and the output filenames cannot be declared up front.
+
+In both ways the host FASTA files are only read, never changed. With BoarderCollie, the run stops if the reference path is one of the host's own FASTA files, or if a file not written by BoarderCollie already sits there.
 
 ### Prototype selection
 

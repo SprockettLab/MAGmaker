@@ -6,7 +6,7 @@ needs CheckM2 + GUNC + GTDB-Tk, and the viral track needs geNomad + CheckV.
 
 | Database | For | Size (approx.) | `config.yaml` key |
 |---|---|---|---|
-| Host genome FASTA | host read removal | varies | `host_filter.genome` |
+| Host genome(s) | host read removal | varies | `boardercollie.hosts`, or `host_filter.genome` |
 | MetaPhlAn 4 | read-level profiling | ~20 GB | `params.metaphlan.db_path` |
 | Kraken2 + Bracken | read-level profiling | ~200 GB (Standard) | `params.kraken2.db` / `bracken-db` |
 | CheckM2 | MAG completeness / contamination | ~3 GB | `params.checkm2.db_path` |
@@ -176,10 +176,13 @@ Set `params.checkv.db_path` to the `checkv-db-v1.x` directory.
 
 ## Host genome
 
-The host genome FASTA is used by bowtie2 to remove host reads. Any genome FASTA will work; the bowtie2 index is built automatically on first run.
+Host reads are removed by mapping with bowtie2 to a host reference. By default the reference is built by [BoarderCollie](https://github.com/SprockettLab/BoarderCollie) from the genomes listed under `boardercollie.hosts` (NCBI accessions or local FASTA files): it downloads them, removes foreign DNA found in the assemblies, and joins them. It needs a local BoarderCollie clone (`host_filter.boardercollie_dir`) and the NCBI FCS-GX database (`boardercollie.fcs_gx_db`, ~520 GB). See [Configuration](configuration.md#host-filter).
+
+To use an existing FASTA as it is instead:
 
 ```yaml
 host_filter:
+  boardercollie: false
   genome: /path/to/host_genome.fna
   db_dir: /path/to/index_directory/
 ```
