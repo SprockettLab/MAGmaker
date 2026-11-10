@@ -2,8 +2,10 @@
 """Tests the two ways of giving the host reference (host_reference.smk).
 
   boardercollie: true   BoarderCollie, loaded as a Snakemake module, joins
-                        the host's genomes into <db_dir>/<host>.fna, and the
-                        bowtie2 index is tied to that file's md5.
+                        the host's genomes into
+                        output/qc/host_reference/<host>.fna, and the bowtie2
+                        index is tied to that file's md5. An older config's
+                        host_filter.genome and db_dir are not used.
   boardercollie: false  host_filter.genome is used as it is.
 
 Runs the real Snakefile on two tiny FASTA files with BoarderCollie's
@@ -103,25 +105,41 @@ def new_tmp():
 
 def test_boardercollie_mode():
     tmp = new_tmp()
-    db_dir = os.path.join(tmp, 'hostref')
+    db_dir = os.path.join(tmp, 'output', 'qc', 'host_reference')
     ref = os.path.join(db_dir, 'H.fna')
     done = os.path.join(db_dir, 'H.bowtie2_build.done')
+    # The reference and index are declared relative to the run directory.
+    done_target = os.path.join('output', 'qc', 'host_reference',
+                               'H.bowtie2_build.done')
     stamp = os.path.join(db_dir, 'H.reference.md5')
     host1 = os.path.join(tmp, 'host1.fna')
     host2 = os.path.join(tmp, 'host2.fna')
+    # An older project config still naming a genome and index directory:
+    # with BoarderCollie on, neither is used or touched.
+    old_dir = os.path.join(tmp, 'old_index')
+    os.makedirs(old_dir)
+    old_genome = os.path.join(old_dir, 'old_host.fna')
+    with open(old_genome, 'w') as handle:
+        handle.write(">old\nACGT\n")
     hf = {'boardercollie': True, 'boardercollie_dir': BC_DIR,
-          'db_dir': db_dir, 'genome': ''}
+          'db_dir': old_dir, 'genome': old_genome}
 
     host1_md5, host1_mtime = md5(host1), os.stat(host1).st_mtime_ns
     write_config(tmp, hf, bc_section(
         tmp, [{'fasta': host1, 'tax_id': 9606}]))
-    first = snakemake(tmp, done)
+    first = snakemake(tmp, done_target)
     check("BoarderCollie mode builds the reference and index",
           first.returncode == 0, first.stdout + first.stderr)
     if first.returncode != 0:
         return
-    check("joined reference written to <db_dir>/<host>.fna",
+    check("joined reference written to output/qc/host_reference/<host>.fna",
           read(ref) == read(host1))
+    check("older config's genome and db_dir left untouched",
+          sorted(os.listdir(old_dir)) == ['old_host.fna']
+          and read(old_genome) == ">old\nACGT\n")
+    check("the host in use is printed",
+          'MAGmaker host reference: BoarderCollie, host H' in first.stderr
+          and 'not used while' in first.stderr, first.stderr)
     check("members.tsv written beside the reference",
           os.path.exists(ref + '.members.tsv'))
     check("index stamped with the reference's md5",
@@ -133,7 +151,7 @@ def test_boardercollie_mode():
     check("BoarderCollie's own indexes are not built",
           not os.path.exists(os.path.join(tmp, 'idx')))
 
-    again = snakemake(tmp, '-n', done)
+    again = snakemake(tmp, '-n', done_target)
     check("nothing to redo on an unchanged config",
           again.returncode == 0
           and 'Nothing to be done' in again.stdout + again.stderr,
@@ -143,7 +161,7 @@ def test_boardercollie_mode():
     old_index = md5(os.path.join(db_dir, 'H.1.bt2'))
     write_config(tmp, hf, bc_section(
         tmp, [{'fasta': host2, 'tax_id': 9606}]))
-    second = snakemake(tmp, done)
+    second = snakemake(tmp, done_target)
     check("changed host genomes run again", second.returncode == 0,
           second.stdout + second.stderr)
     if second.returncode != 0:
@@ -161,7 +179,7 @@ def test_boardercollie_mode():
     # A complete index whose stamp matches is reused, not rebuilt.
     os.remove(done)
     index_mtime = os.stat(os.path.join(db_dir, 'H.1.bt2')).st_mtime_ns
-    third = snakemake(tmp, done)
+    third = snakemake(tmp, done_target)
     log = read(os.path.join(tmp, 'output', 'logs', 'qc',
                             'host_bowtie2_build', 'host_bowtie2_build.log'))
     check("matching index reused",
@@ -192,8 +210,7 @@ def expect_error(name, message, host_filter, boardercollie=None,
     tmp = new_tmp()
     if setup:
         setup(tmp)
-    hf = {'boardercollie': True, 'boardercollie_dir': BC_DIR,
-          'db_dir': os.path.join(tmp, 'hostref'), 'genome': ''}
+    hf = {'boardercollie': True, 'boardercollie_dir': BC_DIR}
     hf.update(host_filter(tmp))
     bc = (boardercollie(tmp) if boardercollie else
           bc_section(tmp, [{'fasta': os.path.join(tmp, 'host1.fna'),
@@ -206,9 +223,6 @@ def expect_error(name, message, host_filter, boardercollie=None,
 
 
 def test_config_errors():
-    expect_error("genome set while BoarderCollie is on is refused",
-                 "host_filter.genome is set",
-                 lambda t: {'genome': os.path.join(t, 'host1.fna')})
     expect_error("missing BoarderCollie clone is refused",
                  "No BoarderCollie workflow",
                  lambda t: {'boardercollie_dir': os.path.join(t, 'nowhere')})
@@ -221,23 +235,32 @@ def test_config_errors():
                  "leave reference_out out", lambda t: {},
                  lambda t: bc_section(t, ['GCA_1.1'],
                                       reference_out=os.path.join(t, 'x.fna')))
-    expect_error("a host FASTA at the reference path is refused",
-                 "one of the host's own genome FASTA files",
-                 lambda t: {'db_dir': t},
-                 lambda t: {**bc_section(t, []), 'hosts': [{
-                     'name': 'host1',
-                     'genomes': [{'fasta': os.path.join(t, 'host1.fna'),
-                                  'tax_id': 9606}]}]})
+    ref_dir = lambda t: os.path.join(t, 'output', 'qc', 'host_reference')
+
+    def own_fasta(tmp):
+        os.makedirs(ref_dir(tmp))
+        shutil.copy(os.path.join(tmp, 'host1.fna'), ref_dir(tmp))
+    tmp = expect_error("a host FASTA at the reference path is refused",
+                       "one of the host's own genome FASTA files",
+                       lambda t: {},
+                       lambda t: {**bc_section(t, []), 'hosts': [{
+                           'name': 'host1',
+                           'genomes': [{'fasta': os.path.join(
+                               ref_dir(t), 'host1.fna'), 'tax_id': 9606}]}]},
+                       setup=own_fasta)
+    check("and that FASTA is left as it was",
+          read(os.path.join(ref_dir(tmp), 'host1.fna'))
+          == read(os.path.join(tmp, 'host1.fna')))
 
     def plant(tmp):
-        os.makedirs(os.path.join(tmp, 'hostref'))
-        with open(os.path.join(tmp, 'hostref', 'H.fna'), 'w') as handle:
+        os.makedirs(ref_dir(tmp))
+        with open(os.path.join(ref_dir(tmp), 'H.fna'), 'w') as handle:
             handle.write(">mine\nACGT\n")
     tmp = expect_error("a file BoarderCollie did not write is refused",
                        "was not written by BoarderCollie", lambda t: {},
                        setup=plant)
     check("and that file is left as it was",
-          read(os.path.join(tmp, 'hostref', 'H.fna')) == ">mine\nACGT\n")
+          read(os.path.join(ref_dir(tmp), 'H.fna')) == ">mine\nACGT\n")
 
 
 if __name__ == '__main__':
