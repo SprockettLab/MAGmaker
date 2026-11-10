@@ -467,9 +467,10 @@ params:
 
 host_filter:
   boardercollie: true
-  # A local clone of github.com/SprockettLab/BoarderCollie, loaded as a
-  # Snakemake module (its steps appear as boardercollie_*).
-  boardercollie_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/software/BoarderCollie"
+  # BoarderCollie is fetched automatically on the first run, into
+  # resources/external/BoarderCollie, at the version this MAGmaker pins.
+  # To use a clone of your own as it is instead (e.g. while developing it):
+  # boardercollie_dir: /path/to/BoarderCollie
   # Used only with boardercollie: false (see way 2 above).
   # db_dir: /path/to/bt2_index_dir
   # genome: /path/to/host_genome.fna

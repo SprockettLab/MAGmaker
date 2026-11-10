@@ -223,9 +223,12 @@ def expect_error(name, message, host_filter, boardercollie=None,
 
 
 def test_config_errors():
-    expect_error("missing BoarderCollie clone is refused",
+    def empty_dir(tmp):
+        os.makedirs(os.path.join(tmp, 'not_a_clone'))
+    expect_error("a folder that is not a BoarderCollie clone is refused",
                  "No BoarderCollie workflow",
-                 lambda t: {'boardercollie_dir': os.path.join(t, 'nowhere')})
+                 lambda t: {'boardercollie_dir': os.path.join(t, 'not_a_clone')},
+                 setup=empty_dir)
     expect_error("two hosts are refused", "exactly one host",
                  lambda t: {},
                  lambda t: {**bc_section(t, ['GCA_1.1']),
@@ -263,6 +266,76 @@ def test_config_errors():
           read(os.path.join(ref_dir(tmp), 'H.fna')) == ">mine\nACGT\n")
 
 
+def git(*args, cwd=None):
+    return subprocess.run(['git', *args], cwd=cwd, capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+def test_automatic_clone():
+    """MAGmaker clones BoarderCollie itself, at the version it pins, and
+    moves its own clone when the pin changes; a clone it did not make is
+    never changed. Cloned from the local BoarderCollie clone (BC_DIR) so the
+    test needs no network."""
+    tmp = new_tmp()
+    clone = os.path.join(tmp, 'external', 'BoarderCollie')
+    head = git('rev-parse', 'HEAD', cwd=BC_DIR)
+    older = git('rev-parse', 'HEAD~1', cwd=BC_DIR)
+    bc = bc_section(tmp, [{'fasta': os.path.join(tmp, 'host1.fna'),
+                           'tax_id': 9606}])
+
+    def dry(version):
+        write_config(tmp, {'boardercollie': True, 'boardercollie_dir': clone,
+                           'boardercollie_url': BC_DIR,
+                           'boardercollie_version': version}, bc)
+        return snakemake(tmp, '-n')
+
+    first = dry(older)
+    check("missing BoarderCollie is cloned at the pinned version",
+          first.returncode == 0
+          and git('rev-parse', 'HEAD', cwd=clone) == older
+          and os.path.exists(os.path.join(clone, '.git',
+                                          'magmaker-managed')),
+          first.stdout + first.stderr)
+    check("no partial clone left behind",
+          os.listdir(os.path.dirname(clone)) == ['BoarderCollie'])
+    check("the clone shows no local changes",
+          git('status', '--porcelain', cwd=clone) == '')
+
+    second = dry(head)
+    check("MAGmaker's own clone moves to a newly pinned version",
+          second.returncode == 0
+          and git('rev-parse', 'HEAD', cwd=clone) == head
+          and 'moving BoarderCollie' in second.stderr,
+          second.stdout + second.stderr)
+
+    with open(os.path.join(clone, 'README.md'), 'a') as handle:
+        handle.write("local edit\n")
+    third = dry(older)
+    check("a clone with local changes is not moved",
+          third.returncode != 0 and 'has local changes' in third.stderr
+          and git('rev-parse', 'HEAD', cwd=clone) == head,
+          third.stdout + third.stderr)
+
+    bc_head = git('rev-parse', 'HEAD', cwd=BC_DIR)
+    write_config(tmp, {'boardercollie': True, 'boardercollie_dir': BC_DIR,
+                       'boardercollie_version': older}, bc)
+    fourth = snakemake(tmp, '-n')
+    check("a clone MAGmaker did not make is used as it is",
+          fourth.returncode == 0
+          and git('rev-parse', 'HEAD', cwd=BC_DIR) == bc_head,
+          fourth.stdout + fourth.stderr)
+
+    write_config(tmp, {'boardercollie': True,
+                       'boardercollie_dir': os.path.join(tmp, 'other'),
+                       'boardercollie_url': os.path.join(tmp, 'no_repo')}, bc)
+    fifth = snakemake(tmp, '-n')
+    check("a failed clone stops the run with git's message",
+          fifth.returncode != 0 and 'git clone' in fifth.stderr
+          and not os.path.exists(os.path.join(tmp, 'other')),
+          fifth.stdout + fifth.stderr)
+    shutil.rmtree(tmp)
+
+
 if __name__ == '__main__':
     missing = [tool for tool in ('snakemake', 'bowtie2-build')
                if shutil.which(tool) is None]
@@ -272,5 +345,6 @@ if __name__ == '__main__':
     test_boardercollie_mode()
     test_prebuilt_mode()
     test_config_errors()
+    test_automatic_clone()
     print("\n{} failure(s)".format(len(FAILURES)))
     sys.exit(1 if FAILURES else 0)

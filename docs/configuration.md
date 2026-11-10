@@ -100,7 +100,6 @@ Reads are mapped with bowtie2 against one host reference, given in one of two wa
 ```yaml
 host_filter:
   boardercollie: true
-  boardercollie_dir: /path/to/BoarderCollie   # a local clone
 
 boardercollie:
   library_dir: /path/to/boardercollie/library
@@ -113,7 +112,9 @@ boardercollie:
       ladder: auto
 ```
 
-[BoarderCollie](https://github.com/SprockettLab/BoarderCollie), loaded as a Snakemake module, downloads the genomes, screens them for foreign DNA with NCBI FCS-GX, removes the regions that fail its tests, and joins the cleaned genomes into one reference at `output/qc/host_reference/<host name>.fna`, with `<host name>.fna.members.tsv` listing what went into it. Its steps appear in the job list as `boardercollie_*`. The `boardercollie` section is a BoarderCollie config (every setting is described in its `config/config.example.yaml`), with two rules: exactly one host, and no `reference_out` (MAGmaker sets it). A genome is given as an NCBI accession or as `{fasta: /path/genome.fna, tax_id: 9606}`. `settings: download_only: true` joins the genomes as downloaded, without screening or cleaning.
+[BoarderCollie](https://github.com/SprockettLab/BoarderCollie) needs no setup: on the first run MAGmaker clones it into `resources/external/BoarderCollie` at the version this MAGmaker release pins, and moves that clone to a new version when MAGmaker pins one. To use a clone of your own instead (for example while developing BoarderCollie), set `host_filter.boardercollie_dir` to it; MAGmaker uses it as it is and never changes it.
+
+BoarderCollie, loaded as a Snakemake module, downloads the genomes, screens them for foreign DNA with NCBI FCS-GX, removes the regions that fail its tests, and joins the cleaned genomes into one reference at `output/qc/host_reference/<host name>.fna`, with `<host name>.fna.members.tsv` listing what went into it. Its steps appear in the job list as `boardercollie_*`. The `boardercollie` section is a BoarderCollie config (every setting is described in its `config/config.example.yaml`), with two rules: exactly one host, and no `reference_out` (MAGmaker sets it). A genome is given as an NCBI accession or as `{fasta: /path/genome.fna, tax_id: 9606}`. `settings: download_only: true` joins the genomes as downloaded, without screening or cleaning.
 
 Genomes already downloaded, and genomes already cleaned with the same settings, are reused from the library rather than redone. FCS-GX holds its ~520 GB database in memory, so the first screen of a genome needs a large-memory node.
 
