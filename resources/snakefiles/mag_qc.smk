@@ -173,11 +173,42 @@ rule gtdbtk_identify:
 
         # Output from a classify_wf run made before this rule existed is
         # complete and correct; recomputing it would cost hours for nothing.
+        #
+        # But "a markers_summary.tsv exists" is not "identify finished". An
+        # attempt that was killed partway leaves a short summary, and the
+        # existence test above accepted it, so the next attempt reused a
+        # partial result and reported success. Check instead that every bin
+        # on disk is accounted for, in the spirit of run_gtdbtk's count of
+        # classified genomes.
+        #
+        # Nothing is deleted: gtdbtk identify overwrites its own outputs, and
+        # a partial summary is still evidence worth keeping if the rerun also
+        # fails. Same reasoning as run_gtdbtk.
         existing=$(ls {params.out_dir}/identify/*markers_summary.tsv 2>/dev/null | head -1 || true)
         if [ -n "$existing" ]; then
-            echo "Reusing existing identify output in {params.out_dir}/identify" >> {log}
-            touch -r "$existing" {output.done}
-            exit 0
+            # Compare NAMES, not counts. identify accounts for a bin in one
+            # of two places: a row in a markers_summary, or a row in
+            # gtdbtk.failed_genomes.tsv when it could not profile it. A
+            # count against the bin list would therefore rerun forever on
+            # any sample with a failed genome. Matching names also means a
+            # header line cannot be mistaken for a genome, so neither file
+            # needs its header stripped here.
+            covered=$(cut -f1 {params.out_dir}/identify/*markers_summary.tsv \
+                              {params.out_dir}/identify/gtdbtk.failed_genomes.tsv \
+                      2>/dev/null | sort -u)
+            n_missing=0
+            for b in {params.bins_dir}/*.fa; do
+                [ -e "$b" ] || continue
+                printf '%s\n' "$covered" \
+                    | grep -qxF -- "$(basename "$b" .fa)" \
+                    || n_missing=$(( n_missing + 1 ))
+            done
+            if [ "$n_missing" -eq 0 ]; then
+                echo "Reusing existing identify output in {params.out_dir}/identify (every bin accounted for)" >> {log}
+                touch -r "$existing" {output.done}
+                exit 0
+            fi
+            echo "Existing identify does not account for $n_missing bins; rerunning identify." >> {log}
         fi
 
         export GTDBTK_DATA_PATH="{params.db_path}"
@@ -235,11 +266,53 @@ rule gtdbtk_align:
             exit 0
         fi
 
+        # "a user_msa exists" is not "align finished", for the same reason
+        # as in gtdbtk_identify above.
+        #
+        # The test is NOT against the bin list. align legitimately drops
+        # genomes carrying too few markers to place, so a complete run
+        # routinely yields an MSA shorter than the bin list. What align does
+        # account for is every genome identify profiled: each ends up either
+        # in a user_msa or in the filtered list.
+        #
+        # If identify's output cannot be read, the existing align output is
+        # NOT reused and align runs again. That direction costs time, never
+        # correctness.
         existing=$(ls {params.out_dir}/align/*user_msa.fasta* 2>/dev/null | head -1 || true)
         if [ -n "$existing" ]; then
-            echo "Reusing existing align output in {params.out_dir}/align" >> {log}
-            touch -r "$existing" {output.done}
-            exit 0
+            # Names again, for the same reasons. Here the markers_summary
+            # header (first field literally "name") IS stripped: left in, it
+            # would look like a genome that never aligns, and align would
+            # rerun forever. Each profiled genome appears either in a
+            # user_msa or in gtdbtk.<domain>.filtered.tsv. Note the glob is
+            # *user_msa.fasta*, not *msa.fasta*: the latter also matches
+            # gtdbtk.<domain>.msa.fasta.gz, which carries the GTDB reference
+            # genomes as well as these bins.
+            required=$(cut -f1 {params.out_dir}/identify/*markers_summary.tsv 2>/dev/null \
+                       | grep -vxF name | sort -u)
+            covered=$( {{ for f in {params.out_dir}/align/*user_msa.fasta*; do
+                            [ -e "$f" ] || continue
+                            case "$f" in
+                                *.gz) zcat "$f" ;;
+                                *)    cat "$f" ;;
+                            esac | sed -n 's/^>\([^ ]*\).*/\1/p'
+                        done
+                        cut -f1 {params.out_dir}/align/*filtered.tsv 2>/dev/null
+                      }} | sort -u )
+            n_required=$(printf '%s\n' "$required" | grep -c . || true)
+            n_missing=0
+            if [ "$n_required" -gt 0 ]; then
+                for g in $required; do
+                    printf '%s\n' "$covered" | grep -qxF -- "$g" \
+                        || n_missing=$(( n_missing + 1 ))
+                done
+            fi
+            if [ "$n_required" -gt 0 ] && [ "$n_missing" -eq 0 ]; then
+                echo "Reusing existing align output in {params.out_dir}/align (all $n_required identified genomes accounted for)" >> {log}
+                touch -r "$existing" {output.done}
+                exit 0
+            fi
+            echo "Existing align does not account for $n_missing of $n_required identified genomes; rerunning align." >> {log}
         fi
 
         export GTDBTK_DATA_PATH="{params.db_path}"
