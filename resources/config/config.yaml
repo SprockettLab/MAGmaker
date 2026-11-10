@@ -199,7 +199,14 @@ params:
   metaphlan:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/metaphlan"
     db_name: "mpa_vJan25_CHOCOPhlAnSGB_202503"
-    other: "--add_viruses --unclassified_estimation"
+    # MetaPhlAn 4.2 removed both options this used to carry.
+    # --unclassified_estimation is gone because the estimate is now made by
+    # default; --skip_unclassified_estimation turns it off. --add_viruses is
+    # gone because clade groups are now excluded rather than added, through
+    # --ignore_eukaryotes / --ignore_bacteria / --ignore_archaea /
+    # --ignore_ksgbs / --ignore_usgbs. Passing either to 4.2 aborts the run
+    # with "unrecognized arguments".
+    other: ""
 
   kraken2:
     levels: 'P,C,O,F,G,S'
