@@ -444,16 +444,17 @@ params:
 #    genomes under boardercollie.hosts below and leave genome empty.
 #    BoarderCollie downloads them, screens them for foreign DNA with FCS-GX,
 #    removes what fails its tests, and joins them into one reference written
-#    to <db_dir>/<host name>.fna (with <host name>.fna.members.tsv beside it).
-#    The bowtie2 index <db_dir>/<host name>.* is tied to that file's md5 and
+#    to output/qc/host_reference/<host name>.fna (with .members.tsv beside
+#    it). Its bowtie2 index sits beside it, tied to the reference's md5 and
 #    rebuilt whenever its contents change. Genomes already downloaded or
 #    cleaned with the same settings are reused, never redone. Screening needs
-#    a node with ~520 GB free for the FCS-GX database.
+#    a node with ~520 GB free for the FCS-GX database. genome and db_dir are
+#    not used in this way, so older project configs that set them simply
+#    switch to BoarderCollie (the run prints which host and genomes it uses).
 #
 # 2. boardercollie: false. genome is an existing FASTA used as it is; its
 #    index is <db_dir>/<FASTA file name without extension>.*, reused when
-#    complete and built otherwise. Project configs written before
-#    BoarderCollie need  boardercollie: false  added to keep working as before.
+#    complete and built otherwise.
 #
 #    Pre-built on demon:
 #      db_dir: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/bt2/human_GCA_000001405.29_GRCh38.p14
@@ -469,10 +470,9 @@ host_filter:
   # A local clone of github.com/SprockettLab/BoarderCollie, loaded as a
   # Snakemake module (its steps appear as boardercollie_*).
   boardercollie_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/software/BoarderCollie"
-  # One directory per host setup: two configs writing the same host name
-  # into one db_dir would overwrite each other's reference.
-  db_dir: "output/qc/host_reference"
-  genome: ""
+  # Used only with boardercollie: false (see way 2 above).
+  # db_dir: /path/to/bt2_index_dir
+  # genome: /path/to/host_genome.fna
 
 # BoarderCollie's own config (used only with host_filter.boardercollie: true).
 # Every setting is described in BoarderCollie's config/config.example.yaml.

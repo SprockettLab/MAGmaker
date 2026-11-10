@@ -8,14 +8,19 @@ from os.path import abspath, basename, exists, join, normpath, splitext
 #
 #   true  (default)  The host's genomes are listed in the boardercollie
 #                    section. BoarderCollie, loaded as a Snakemake module,
-#                    downloads, screens, cleans and joins them, and writes
-#                    the joined reference to <db_dir>/<host name>.fna.
-#                    host_filter.genome must be empty.
+#                    downloads, screens, cleans and joins them. The joined
+#                    reference, and MAGmaker's index of it, go to
+#                    output/qc/host_reference/. host_filter.genome and
+#                    host_filter.db_dir are not used, so older project
+#                    configs that still set them run with BoarderCollie too.
 #   false            host_filter.genome is an existing FASTA, used as it is
 #                    with its index in db_dir, exactly as before BoarderCollie.
 #
 # Defines host_reference (the FASTA), host_base (the bowtie2 index stem) and
 # rule host_bowtie2_build.
+
+# BoarderCollie mode: the joined reference and its index are per project.
+HOST_REFERENCE_DIR = "output/qc/host_reference"
 
 
 def _host_fail(message):
@@ -29,26 +34,14 @@ USE_BOARDERCOLLIE = _hf.get('boardercollie', True)
 if not isinstance(USE_BOARDERCOLLIE, bool):
     _host_fail("host_filter.boardercollie must be true or false, got "
                f"{USE_BOARDERCOLLIE!r}.")
-if not _hf.get('db_dir'):
-    _host_fail("host_filter.db_dir is not set. It is the directory the "
-               "bowtie2 index is kept in.")
 
 
 def boardercollie_setup(hf, bc_config):
     """in : the host_filter and boardercollie config sections
        out: (reference path, index stem, Snakefile path, module config)
 
-    Plain Python, so the checks can be tested without Snakemake. The
-    module config is a copy with reference_out filled in; the caller's
+    The module config is a copy with reference_out filled in; the caller's
     config is not changed."""
-    if hf.get('genome'):
-        raise ValueError(
-            "host_filter.genome is set (" + str(hf['genome']) + ") while "
-            "host_filter.boardercollie is true.\n\n"
-            "To use that FASTA as it is, set  host_filter.boardercollie: false.\n"
-            "To have BoarderCollie build the host reference, leave "
-            "host_filter.genome empty and list the host's genomes under "
-            "boardercollie.hosts.")
     clone = hf.get('boardercollie_dir')
     if not clone:
         raise ValueError(
@@ -75,9 +68,9 @@ def boardercollie_setup(hf, bc_config):
     if host.get('reference_out'):
         raise ValueError(
             "boardercollie.hosts: leave reference_out out. MAGmaker sets it "
-            "to <host_filter.db_dir>/<host name>.fna.")
+            f"to {HOST_REFERENCE_DIR}/<host name>.fna.")
 
-    reference = normpath(join(hf['db_dir'], name + '.fna'))
+    reference = normpath(join(HOST_REFERENCE_DIR, name + '.fna'))
 
     # The original FASTA is never changed. BoarderCollie writes the joined
     # reference with ln -f (replacing whatever is at the path), and
@@ -89,18 +82,35 @@ def boardercollie_setup(hf, bc_config):
                 abspath(genome['fasta']) == abspath(reference):
             raise ValueError(
                 f"The joined reference would be written to {reference}, "
-                "which is one of the host's own genome FASTA files. Set "
-                "host_filter.db_dir to another directory.")
+                "which is one of the host's own genome FASTA files. Move "
+                "that FASTA elsewhere.")
     if exists(reference) and not exists(reference + '.members.tsv'):
         raise ValueError(
             f"{reference} exists but was not written by BoarderCollie (no "
             f"{basename(reference)}.members.tsv beside it). MAGmaker will not "
-            "overwrite it. Set host_filter.db_dir to another directory, or "
-            "use the file as it is with  host_filter.boardercollie: false  "
-            "and  host_filter.genome: " + reference)
+            "overwrite it. Move it elsewhere, or use it as it is with  "
+            "host_filter.boardercollie: false  and  host_filter.genome: "
+            + reference)
 
     host['reference_out'] = reference
-    return reference, normpath(join(hf['db_dir'], name)), snakefile, bc
+    return (reference, normpath(join(HOST_REFERENCE_DIR, name)), snakefile,
+            bc)
+
+
+def boardercollie_summary(hf, bc):
+    """Which host reference this run uses, printed when the workflow is read."""
+    host = bc['hosts'][0]
+    genomes = [g if isinstance(g, str) else
+               (g.get('accession') or g.get('fasta'))
+               for g in host.get('genomes') or []]
+    lines = ["MAGmaker host reference: BoarderCollie, host " + host['name']
+             + ", genomes " + ", ".join(map(str, genomes))
+             + ", written to " + host['reference_out']]
+    ignored = [k for k in ('genome', 'db_dir') if hf.get(k)]
+    if ignored:
+        lines.append("  (host_filter." + " and host_filter.".join(ignored)
+                     + " not used while host_filter.boardercollie is true)")
+    return "\n".join(lines)
 
 
 if USE_BOARDERCOLLIE:
@@ -110,11 +120,13 @@ if USE_BOARDERCOLLIE:
             _hf, config.get('boardercollie'))
     except ValueError as err:
         _host_fail(str(err))
+    print(boardercollie_summary(_hf, BOARDERCOLLIE_CONFIG), file=sys.stderr)
     include: "host_index_boardercollie.smk"
 else:
-    if not _hf.get('genome'):
+    if not _hf.get('genome') or not _hf.get('db_dir'):
         _host_fail("host_filter.boardercollie is false, so host_filter.genome "
-                   "must name an existing host FASTA.")
+                   "must name an existing host FASTA and host_filter.db_dir "
+                   "the directory its bowtie2 index is kept in.")
     host_reference = _hf['genome']
     host_base = join(_hf['db_dir'], splitext(basename(_hf['genome']))[0])
     include: "host_index_prebuilt.smk"
