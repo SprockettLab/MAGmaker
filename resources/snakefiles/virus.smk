@@ -47,7 +47,20 @@ rule run_genomad:
         # the *_summary dir (+ virus/plasmid .fna) that downstream rules read.
         # The rm is best-effort (|| true) so a stray .nfs* file can't fail the
         # job; NFS reaps those once their holder is gone.
+        #
+        # The output directory is cleared FIRST, on every attempt. geNomad
+        # resumes from whatever intermediates it finds, so a retry after a
+        # killed attempt mixes new results with a half-written table. On the
+        # WF18 Jasinska arm that produced
+        #   summary.py:52 KeyError: np.str_('k119_...|provirus_...')
+        # on 7 of 90 samples -- a provirus present in the virus list but
+        # missing from the length lookup built by an earlier attempt. Deleting
+        # the directory and rerunning fixed all 7 with no other change.
+        # A retry therefore redoes the work instead of resuming it. That is
+        # the intended trade: a slower retry beats a wrong table.
         """
+            rm -rf {params.outdir}
+            mkdir -p {params.outdir}
             genomad end-to-end --threads {threads} {params.extra} \
                 {input.contigs} {params.outdir} {params.db} \
                 2> {log} 1>&2
@@ -89,7 +102,19 @@ rule run_checkv:
     log:
         "output/logs/virus/checkv/{assembler}/{contig_sample}.log"
     shell:
+        # The output directory is cleared FIRST, on every attempt, for the
+        # same reason as run_genomad -- but CheckV fails far more quietly.
+        # It resumes from its tmp/ directory, so a retry after a killed
+        # attempt finishes in a fraction of a second and writes a
+        # quality_summary.tsv covering only what the first attempt managed.
+        # It then exits 0. On the WF18 Jasinska arm, 9 of 90 samples came out
+        # with 274 to 569 quality rows against 3,504 to 7,335 geNomad virus
+        # sequences, each leaving 13 files in tmp/. Nothing failed; 44,170 of
+        # 380,306 viral contigs (11.6%) simply had an empty checkv_quality
+        # field in the merged summary, and any quality filter applied to that
+        # table would have silently dropped them.
         """
+            rm -rf {params.outdir}
             mkdir -p {params.outdir}
             if [ -s {params.virus_fna} ]; then
                 checkv end_to_end {params.virus_fna} {params.outdir} \
