@@ -55,6 +55,35 @@ conda-prefix: /isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/snak
 set-resources:
   host_filter:
     mem_mb: 16000
+  # BoarderCollie steps (host_filter.boardercollie: true). Memory and threads
+  # come from BoarderCollie's own rules; only runtime is set here, since the
+  # 120-minute default is far short of an FCS-GX screen or a whole-genome
+  # minimap2 alignment of a mammalian host. These are generous first values,
+  # not measured ones; tighten them once real runtimes are known.
+  boardercollie_fetch:
+    runtime: 480
+  boardercollie_screen:
+    runtime: 2880
+  boardercollie_screen_precomputed:
+    runtime: 480
+  boardercollie_reference_without_flagged:
+    runtime: 480
+  boardercollie_extract:
+    runtime: 480
+  boardercollie_align:
+    runtime: 2880
+  boardercollie_copies_own:
+    runtime: 2880
+  boardercollie_copies_ref:
+    runtime: 2880
+  boardercollie_trf:
+    runtime: 1440
+  boardercollie_decide:
+    runtime: 1440
+  boardercollie_clean:
+    runtime: 1440
+  boardercollie_combine:
+    runtime: 480
   metaspades:
     mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
                         # input-scaled floor; this overrides it. defq nodes

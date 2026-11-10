@@ -50,7 +50,7 @@ The default `config.yaml` is already configured for DEMON. All databases are pre
 
 The only things you need to change in `config.yaml` before running are:
 
-1. **`host_filter.genome`** — path to your host genome FASTA (human GRCh38 bowtie2 index is already built; set `db_dir` to the path above)
+1. **Host reference** — by default BoarderCollie builds it from `boardercollie.hosts` (human GRCh38 is preset; change the genomes for another host). To use the pre-built human GRCh38 index instead, set `host_filter.boardercollie: false`, `host_filter.genome` to the FASTA and `host_filter.db_dir` to the path above
 2. **`metadata`** — path to your `metadata.txt` file
 
 Everything else — CheckM2, GUNC, GTDB-Tk, MetaPhlAn, Kraken2, geNomad, CheckV
