@@ -173,11 +173,33 @@ rule gtdbtk_identify:
 
         # Output from a classify_wf run made before this rule existed is
         # complete and correct; recomputing it would cost hours for nothing.
+        #
+        # But "a markers_summary.tsv exists" is not "identify finished". An
+        # attempt that was killed partway leaves a short summary, and the
+        # existence test above accepted it, so the next attempt reused a
+        # partial result and reported success. Count the genomes covered
+        # against the bins on disk instead, the way run_gtdbtk counts
+        # classified genomes. identify assigns each genome to exactly one
+        # domain, so the rows across bac120 and ar53 together should account
+        # for every bin.
+        #
+        # Nothing is deleted: gtdbtk identify overwrites its own outputs, and
+        # a partial summary is still evidence worth keeping if the rerun also
+        # fails. Same reasoning as run_gtdbtk.
         existing=$(ls {params.out_dir}/identify/*markers_summary.tsv 2>/dev/null | head -1 || true)
         if [ -n "$existing" ]; then
-            echo "Reusing existing identify output in {params.out_dir}/identify" >> {log}
-            touch -r "$existing" {output.done}
-            exit 0
+            n_bins=$(ls {params.bins_dir}/*.fa 2>/dev/null | wc -l | tr -d '[:space:]')
+            n_ident=0
+            for f in {params.out_dir}/identify/*markers_summary.tsv; do
+                [ -e "$f" ] || continue
+                n_ident=$(( n_ident + $(wc -l < "$f") - 1 ))
+            done
+            if [ "$n_ident" -ge "$n_bins" ]; then
+                echo "Reusing existing identify output in {params.out_dir}/identify ($n_ident genomes)" >> {log}
+                touch -r "$existing" {output.done}
+                exit 0
+            fi
+            echo "Existing identify covers only $n_ident of $n_bins bins; rerunning identify." >> {log}
         fi
 
         export GTDBTK_DATA_PATH="{params.db_path}"
@@ -235,11 +257,45 @@ rule gtdbtk_align:
             exit 0
         fi
 
+        # "a user_msa exists" is not "align finished", for the same reason
+        # as in gtdbtk_identify above.
+        #
+        # The count here is NOT against the bin count. align legitimately
+        # drops genomes carrying too few markers to place, so a complete run
+        # routinely yields an MSA shorter than the bin list. What it does
+        # account for is every genome identify found: each ends up either in
+        # the MSA or in the filtered list. Completeness is therefore
+        # aligned + filtered >= identified.
+        #
+        # If the identify count cannot be read, the existing output is NOT
+        # reused and align runs again. That direction costs time, never
+        # correctness.
         existing=$(ls {params.out_dir}/align/*user_msa.fasta* 2>/dev/null | head -1 || true)
         if [ -n "$existing" ]; then
-            echo "Reusing existing align output in {params.out_dir}/align" >> {log}
-            touch -r "$existing" {output.done}
-            exit 0
+            n_ident=0
+            for f in {params.out_dir}/identify/*markers_summary.tsv; do
+                [ -e "$f" ] || continue
+                n_ident=$(( n_ident + $(wc -l < "$f") - 1 ))
+            done
+            n_aln=0
+            for f in {params.out_dir}/align/*user_msa.fasta*; do
+                [ -e "$f" ] || continue
+                case "$f" in
+                    *.gz) n_aln=$(( n_aln + $(zcat "$f" | grep -c '^>' || true) )) ;;
+                    *)    n_aln=$(( n_aln + $(grep -c '^>' "$f" || true) )) ;;
+                esac
+            done
+            n_filt=0
+            for f in {params.out_dir}/align/*filtered.tsv; do
+                [ -e "$f" ] || continue
+                n_filt=$(( n_filt + $(wc -l < "$f") ))
+            done
+            if [ "$n_ident" -gt 0 ] && [ "$(( n_aln + n_filt ))" -ge "$n_ident" ]; then
+                echo "Reusing existing align output in {params.out_dir}/align ($n_aln aligned + $n_filt filtered >= $n_ident identified)" >> {log}
+                touch -r "$existing" {output.done}
+                exit 0
+            fi
+            echo "Existing align covers $n_aln aligned + $n_filt filtered of $n_ident identified; rerunning align." >> {log}
         fi
 
         export GTDBTK_DATA_PATH="{params.db_path}"
