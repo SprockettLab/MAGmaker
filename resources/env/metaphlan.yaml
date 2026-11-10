@@ -5,5 +5,5 @@ channels:
   - biobakery
 dependencies:
   - python>=3.7
-  - humann>=3.0
-  - bowtie2>=2.3.0
+  - humann>=3.9
+  - bowtie2>=2.5.5

@@ -6,4 +6,4 @@ dependencies:
   # created ONCE before arms launch: concurrent creation of a heavy
   # environment across a shared conda-prefix has already corrupted the
   # package cache on this cluster.
-  - semibin >=2.4.0
+  - semibin >=2.6.0

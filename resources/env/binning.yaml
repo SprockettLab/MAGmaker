@@ -3,7 +3,11 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  # samtools is deliberately unpinned. metabat2 builds cap htslib below
+  # 1.25, while samtools 1.25 requires htslib >=1.25, so pinning samtools
+  # to the current release makes this environment unsolvable. Leaving it
+  # open lets the solver pick the newest samtools metabat2 permits.
   - samtools
-  - metabat2>=2.15
-  - maxbin2>=2.2
-  - fraggenescan>=1.31
+  - metabat2>=2.18
+  - maxbin2>=2.2.7
+  - fraggenescan>=1.32
