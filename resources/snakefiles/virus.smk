@@ -102,17 +102,23 @@ rule run_checkv:
     log:
         "output/logs/virus/checkv/{assembler}/{contig_sample}.log"
     shell:
-        # The output directory is cleared FIRST, on every attempt, for the
-        # same reason as run_genomad -- but CheckV fails far more quietly.
-        # It resumes from its tmp/ directory, so a retry after a killed
-        # attempt finishes in a fraction of a second and writes a
-        # quality_summary.tsv covering only what the first attempt managed.
-        # It then exits 0. On the WF18 Jasinska arm, 9 of 90 samples came out
-        # with 274 to 569 quality rows against 3,504 to 7,335 geNomad virus
-        # sequences, each leaving 13 files in tmp/. Nothing failed; 44,170 of
-        # 380,306 viral contigs (11.6%) simply had an empty checkv_quality
-        # field in the merged summary, and any quality filter applied to that
-        # table would have silently dropped them.
+        # The output directory is cleared FIRST, on every attempt, as a
+        # precaution matching run_genomad above. CheckV also reuses its tmp/
+        # directory, so a retry can in principle resume from a half-written
+        # state, and unlike geNomad it would do so without failing.
+        #
+        # What was OBSERVED on the WF18 Jasinska 2013 megahit arm: 9 of 90
+        # samples produced a quality_summary.tsv with 274 to 569 rows against
+        # 3,504 to 7,335 geNomad virus sequences, and exited 0. That left
+        # 44,170 of 380,306 viral contigs (11.6%) with an empty
+        # checkv_quality field in the merged summary, with nothing in the
+        # table to show it was incomplete.
+        #
+        # What was NOT established: why. A leftover tmp/ is NOT the signal --
+        # every sample in every arm has one, because CheckV never cleans it
+        # up. The three other arms of the same build show no truncation at
+        # all. So this clear-first is a safety measure whose necessity for
+        # CheckV is unproven, not a fix for a diagnosed cause.
         """
             rm -rf {params.outdir}
             mkdir -p {params.outdir}
