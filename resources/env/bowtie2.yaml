@@ -1,5 +1,11 @@
+# conda-forge first, bioconda second, no defaults: the order bioconda requires.
+# bioconda packages take their libraries from conda-forge. With bioconda alone,
+# or first under strict channel priority (old copies of curl there pin zlib
+# below what spades 4.3 needs), this environment could not be solved.
 channels:
+  - conda-forge
   - bioconda
+  - nodefaults
 dependencies:
   - python>=3.5
   - bowtie2>=2.5.5
