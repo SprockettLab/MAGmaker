@@ -15,7 +15,13 @@ use rule * from boardercollie as boardercollie_*
 
 rule host_bowtie2_build:
     input:
-        reference=host_reference,
+        # ancient: the reference is a hard link of BoarderCollie's shared
+        # library FASTA, and every other run folder with this host touches
+        # that same file (Snakemake touches outputs after a job). Without
+        # ancient, any such run made this folder's index look stale, and the
+        # rerun of this rule would have rerun host_filter for every sample. The index's md5 check below still catches a changed
+        # reference, and a rerun of reference_out here still reruns this.
+        reference=ancient(host_reference),
         members=host_reference + ".members.tsv"
     output:
         # Holds the reference's md5 and the index stem, so the record of
