@@ -4,7 +4,8 @@
 # Runs the complete MAGmaker pipeline in sequence:
 #   1. Main pipeline  — QC → assembly → profiling → prototype selection
 #   2. Binning config — auto-generates binning.txt from selected prototypes
-#   3. Binning pipeline — mapping → binning → DAS_Tool → MAG QC → rename
+#   3. Binning pipeline — mapping → binning → DAS_Tool → MAG QC → rename,
+#      plus the viral / plasmid track (geNomad → CheckV → virus_summary.tsv)
 #
 # All arguments are passed through to each snakemake invocation, so
 # --profile, --cores, --use-conda, -n (dry run), etc. all work as expected.
@@ -27,6 +28,8 @@
 #       --skip-cmseq                            # no strain heterogeneity
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-vsc                              # no viral cluster profiling
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --skip-virus                            # no geNomad / CheckV track
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --binette                               # Binette instead of DAS_Tool
 #   ./run_magmaker.sh --profile resources/profiles/demon \
@@ -65,12 +68,18 @@ set -euo pipefail
 # paying for kraken2's ~200 GB index read per sample.
 SKIP_CONFIG=()
 PASSTHRU=()
+# The viral / plasmid track (virus_all: geNomad, CheckV, virus_summary.tsv)
+# is a Stage 3 target next to rename_mags, so a full run is the full
+# pipeline. It reads only the assemblies and touches nothing in the MAG
+# track. --skip-virus drops it for this run only.
+STAGE3_TARGETS=(rename_mags virus_all)
 for arg in "$@"; do
     case "${arg}" in
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
         --skip-vsc)       SKIP_CONFIG+=("skip_vsc=True") ;;
+        --skip-virus)     STAGE3_TARGETS=(rename_mags) ;;
         # --------------------------------------------------------------
         # Everything collected here becomes ONE --config on each snakemake
         # command line. Snakemake's --config takes nargs="*" with argparse's
@@ -173,18 +182,22 @@ if [[ ! -f output/config/auto_binning.txt ]]; then
     echo " run first to generate it. Re-run without -n to execute the"
     echo " full pipeline, or run the binning stage manually:"
     echo ""
-    echo "   snakemake --snakefile Snakefile-bin [options] rename_mags \\"
+    echo "   snakemake --snakefile Snakefile-bin [options] ${STAGE3_TARGETS[*]} \\"
     echo "     --config binning=output/config/auto_binning.txt"
     echo ""
 else
     # Target before "$@"; keep the variable-length --config last so it
     # doesn't consume, and isn't consumed by, options in the user's args.
-    snakemake --snakefile Snakefile-bin rename_mags ${STAGE3[@]+"${STAGE3[@]}"}
+    echo "Stage 3 targets: ${STAGE3_TARGETS[*]}"
+    snakemake --snakefile Snakefile-bin "${STAGE3_TARGETS[@]}" ${STAGE3[@]+"${STAGE3[@]}"}
 
     echo ""
     echo "========================================"
     echo " MAGmaker  Complete"
     echo " Output:  output/mag_qc/renamed_mags/"
     echo " Summary: output/mag_qc/mag_summary.tsv"
+    if [[ " ${STAGE3_TARGETS[*]} " == *" virus_all "* ]]; then
+        echo " Viral / plasmid: output/virus/virus_summary.tsv"
+    fi
     echo "========================================"
 fi

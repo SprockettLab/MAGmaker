@@ -1,8 +1,9 @@
 # Viral / plasmid track
 
 A per-sample viral and plasmid discovery track that runs parallel to the MAG
-track and does not touch it. It is **opt-in**: `run_magmaker.sh` does not run
-it, and it is requested as its own Stage 3 target.
+track and does not touch it. `run_magmaker.sh` runs it in Stage 3 as a second
+target next to `rename_mags`; `--skip-virus` leaves it out for one run. To run
+it on its own (for example in a run folder whose MAG track already finished):
 
 ```bash
 snakemake --snakefile Snakefile-bin --profile resources/profiles/demon virus_all \

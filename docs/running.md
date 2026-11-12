@@ -12,8 +12,9 @@ MAGmaker runs in up to three stages. The `run_magmaker.sh` wrapper chains all th
 | 2 — Binning config | `snakemake generate_binning_config` | `output/config/auto_binning.txt` |
 | 3 — Binning pipeline | `snakemake --snakefile Snakefile-bin` | MAGs, QC reports, taxonomy, strain heterogeneity, `mag_summary.tsv` |
 
-The optional viral / plasmid track (geNomad + CheckV) is a separate Stage 3
-target, `virus_all` — see below and [Viral / plasmid track](viral.md).
+Stage 3 also runs the viral / plasmid track (geNomad + CheckV), the
+`virus_all` target, unless `--skip-virus` is given — see below and
+[Viral / plasmid track](viral.md).
 
 ---
 
@@ -36,7 +37,7 @@ The `run_magmaker.sh` wrapper at the repository root chains all three stages aut
 
 1. Runs the main pipeline (`snakemake "$@"`)
 2. Runs `generate_binning_config` to produce `output/config/auto_binning.txt`
-3. Runs the binning pipeline through `rename_mags` (`snakemake --snakefile Snakefile-bin "$@" rename_mags --config binning=output/config/auto_binning.txt`)
+3. Runs the binning pipeline through `rename_mags`, and the viral / plasmid track (`snakemake --snakefile Snakefile-bin rename_mags virus_all "$@" --config binning=output/config/auto_binning.txt`; `virus_all` is left out with `--skip-virus`)
 
 **Dry-run behavior:** On a dry run (`-n`), stages 1 and 2 print their DAGs but `auto_binning.txt` is never written (nothing executes). Stage 3 requires `auto_binning.txt` to exist before Snakemake can parse `Snakefile-bin`, so the wrapper detects the missing file and prints a message instead of crashing. Run without `-n` to actually execute stages 1 and 2 first; subsequent runs (including further dry runs) will find the file and show the full stage 3 DAG.
 
@@ -53,6 +54,7 @@ for one run, without editing a tracked file:
 |---|---|
 | `--skip-kraken` | drop the Kraken2 / Bracken targets for this run |
 | `--skip-metaphlan` | drop the MetaPhlAn target for this run |
+| `--skip-virus` | leave the viral / plasmid track (`virus_all`: geNomad, CheckV) out of Stage 3 |
 | `--skip-cmseq` | skip CMSeq strain heterogeneity; the two SH columns in `mag_summary.tsv` become `NA` |
 | `--binette` / `--das-tool` | choose the bin consolidation tool, overriding `params.consolidation.tool` |
 | `--skip-gtdbtk-classify` | run GTDB-Tk `identify` + `align` only — `MSA_Percent` is populated, taxonomy columns are `NA`, pplacer never runs (32–64 GB instead of 128–320 GB) |
@@ -73,7 +75,9 @@ at these flags or at calling `snakemake` directly.
 
 ## Viral / plasmid track
 
-Not run by `run_magmaker.sh`. Request it explicitly as a Stage 3 target:
+Run by `run_magmaker.sh` as a second Stage 3 target next to `rename_mags`
+(leave it out with `--skip-virus`). To run it on its own, for example in a
+run folder whose MAG track has already finished:
 
 ```bash
 snakemake --snakefile Snakefile-bin --profile resources/profiles/demon virus_all \

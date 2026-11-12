@@ -44,7 +44,7 @@ output/
 │   ├── DAS_Tool_Fastas/{sample}/   or   Binette_Fastas/{sample}/   consolidated MAGs per sample
 │   └── {binner}/scaffolds2bin/{sample}_scaffolds2bin.tsv           per-binner contig→bin tables
 │
-├── virus/                              (binning pipeline, virus_all target)
+├── virus/                              (binning pipeline, virus_all target; default)
 │   ├── genomad/{assembler}/{sample}/   viral + plasmid contig classification
 │   ├── checkv/{assembler}/{sample}/    CheckV quality for the viral contigs
 │   └── virus_summary.tsv               merged per-sample viral + plasmid table
