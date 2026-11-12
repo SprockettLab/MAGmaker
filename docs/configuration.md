@@ -120,7 +120,9 @@ Genomes already downloaded, and genomes already cleaned with the same settings, 
 
 `host_filter.genome` and `host_filter.db_dir` are not used in this way, so a project config written before BoarderCollie that still sets them switches to BoarderCollie. When the workflow starts it prints the host and genomes it uses.
 
-The bowtie2 index `output/qc/host_reference/<host name>.*` is tied to the reference's contents: its md5 is written to `<host name>.reference.md5` after a build, and the index is reused only when that md5 matches the current reference. The reference path stays the same when the genomes or settings change, so without this an index of the old reference would be reused silently.
+The bowtie2 index is BoarderCollie's shared one: built **once per host key** under `index_dir` (`bt2/<host name>/<host key>/`) and hard-linked to `output/qc/host_reference/<host name>.*.bt2l`. A second run folder with the same host, on the same `index_dir`, only links; nothing is rebuilt. The host key changes whenever the genomes or BoarderCollie settings change, so a changed host gets its own index and never an index of the old reference. On the cluster the first build runs as BoarderCollie's `bowtie2` step (32 threads, 300 GB).
+
+Run folders made before shared indexes (2026-11-12) built their own index in `output/qc/host_reference/`, stamped with the reference's md5 in `<host name>.reference.md5`. Such a folder keeps its own index and rule unchanged, so updating MAGmaker in it reruns nothing; MAGmaker prints which index a run uses when it starts.
 
 **2. An existing FASTA, used as it is.**
 

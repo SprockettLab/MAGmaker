@@ -10,11 +10,17 @@ from os.path import abspath, basename, exists, join, normpath, splitext
 #
 #   true  (default)  The host's genomes are listed in the boardercollie
 #                    section. BoarderCollie, loaded as a Snakemake module,
-#                    downloads, screens, cleans and joins them. The joined
-#                    reference, and MAGmaker's index of it, go to
-#                    output/qc/host_reference/. host_filter.genome and
-#                    host_filter.db_dir are not used, so older project
-#                    configs that still set them run with BoarderCollie too.
+#                    downloads, screens, cleans and joins them, and builds
+#                    the bowtie2 index once per host key in its shared
+#                    index_dir. The joined reference and that index are
+#                    hard-linked into output/qc/host_reference/, so a second
+#                    run folder with the same host builds nothing.
+#                    host_filter.genome and host_filter.db_dir are not used,
+#                    so older project configs that still set them run with
+#                    BoarderCollie too.
+#                    Run folders made before 2026-11-12 built their own index
+#                    in output/qc/host_reference/ (stamped <host>.reference.md5);
+#                    they keep it, unchanged, so nothing in them reruns.
 #   false            host_filter.genome is an existing FASTA, used as it is
 #                    with its index in db_dir, exactly as before BoarderCollie.
 #
@@ -29,7 +35,7 @@ HOST_REFERENCE_DIR = "output/qc/host_reference"
 # moved to that version whenever MAGmaker pins a newer one. To use a newer
 # BoarderCollie, change BOARDERCOLLIE_VERSION to its commit and test.
 BOARDERCOLLIE_URL = "https://github.com/SprockettLab/BoarderCollie.git"
-BOARDERCOLLIE_VERSION = "781e9e14fe4109ed6482a3018c1f50e005fc9897"
+BOARDERCOLLIE_VERSION = "73b9d2c144a0e40d70eb53a1cf72dd3b7090ef67"
 BOARDERCOLLIE_DEFAULT_DIR = normpath(join(workflow.current_basedir, '..',
                                           'external', 'BoarderCollie'))
 # Kept inside .git, so it never shows as a change in the clone: marks a
@@ -134,12 +140,14 @@ def boardercollie_setup(hf, bc_config):
     if not name or '/' in name:
         raise ValueError("boardercollie.hosts: the host needs a name without "
                          f"'/', got {name!r}.")
-    if host.get('reference_out'):
-        raise ValueError(
-            "boardercollie.hosts: leave reference_out out. MAGmaker sets it "
-            f"to {HOST_REFERENCE_DIR}/<host name>.fna.")
+    for key in ('reference_out', 'bowtie2_out', 'minimap2_out'):
+        if host.get(key):
+            raise ValueError(
+                f"boardercollie.hosts: leave {key} out. MAGmaker sets it "
+                f"to a path under {HOST_REFERENCE_DIR}/.")
 
     reference = normpath(join(HOST_REFERENCE_DIR, name + '.fna'))
+    index_stem = normpath(join(HOST_REFERENCE_DIR, name))
 
     # The original FASTA is never changed. BoarderCollie writes the joined
     # reference with ln -f (replacing whatever is at the path), and
@@ -162,8 +170,22 @@ def boardercollie_setup(hf, bc_config):
             + reference)
 
     host['reference_out'] = reference
-    return (reference, normpath(join(HOST_REFERENCE_DIR, name)), snakefile,
-            bc)
+    if not own_index_built(index_stem):
+        # The shared index, built once per host key by BoarderCollie and
+        # linked here. minimap2 is listed so a long-read caller can ask for
+        # it too; it is only built when asked for.
+        host['indexes'] = ['bowtie2', 'minimap2']
+        host['bowtie2_out'] = index_stem
+    return (reference, index_stem, snakefile, bc)
+
+
+def own_index_built(index_stem):
+    """True when this run folder already holds the bowtie2 index MAGmaker
+    built itself before the shared index existed (stamped with the
+    reference's md5). Such a folder keeps its index and its rule unchanged:
+    switching it to the shared index would change host_filter's input, and
+    Snakemake would filter every sample's reads again."""
+    return exists(index_stem + '.reference.md5')
 
 
 def boardercollie_summary(hf, bc):
@@ -190,7 +212,17 @@ if USE_BOARDERCOLLIE:
     except ValueError as err:
         _host_fail(str(err))
     print(boardercollie_summary(_hf, BOARDERCOLLIE_CONFIG), file=sys.stderr)
-    include: "host_index_boardercollie.smk"
+    if own_index_built(host_base):
+        print("MAGmaker host index: this run folder's own bowtie2 index "
+              f"({host_base}), built before shared indexes; kept as it is.",
+              file=sys.stderr)
+        include: "host_index_boardercollie.smk"
+    else:
+        print("MAGmaker host index: BoarderCollie's shared bowtie2 index "
+              f"(index_dir {BOARDERCOLLIE_CONFIG['index_dir']}), linked to "
+              f"{host_base}; built only if this host has none yet.",
+              file=sys.stderr)
+        include: "host_index_shared.smk"
 else:
     if not _hf.get('genome') or not _hf.get('db_dir'):
         _host_fail("host_filter.boardercollie is false, so host_filter.genome "
