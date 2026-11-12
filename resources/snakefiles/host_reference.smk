@@ -35,7 +35,7 @@ HOST_REFERENCE_DIR = "output/qc/host_reference"
 # moved to that version whenever MAGmaker pins a newer one. To use a newer
 # BoarderCollie, change BOARDERCOLLIE_VERSION to its commit and test.
 BOARDERCOLLIE_URL = "https://github.com/SprockettLab/BoarderCollie.git"
-BOARDERCOLLIE_VERSION = "c8009b02f1ca411337572cd25161732fb548c9a2"
+BOARDERCOLLIE_VERSION = "42127f0a081e7bc8886738c82db950e80798b9da"
 BOARDERCOLLIE_DEFAULT_DIR = normpath(join(workflow.current_basedir, '..',
                                           'external', 'BoarderCollie'))
 # Kept inside .git, so it never shows as a change in the clone: marks a
