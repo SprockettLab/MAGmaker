@@ -132,10 +132,14 @@ column, which you can edit and re-run.
 
 ### 10. Viral / plasmid track
 
-Branches off the assemblies: **geNomad** classifies viral and plasmid contigs
-(no mapping needed), **CheckV** scores the viral ones, and
-`make_virus_summary` writes `virus_summary.tsv`. The `virus_all` target;
-`run_magmaker.sh` runs it in Stage 3 unless `--skip-virus` is given. See [Viral / plasmid track](viral.md).
+Branches off the assemblies. **geNomad** classifies viral and plasmid contigs
+(no mapping needed), with **VIBRANT**, **Cenote-Taker3** and **VirSorter2**
+available behind their own switches; **CheckV** then scores each predictor's
+own calls, and `make_virus_summary` writes `virus_summary.tsv` with
+`Predictor` and `Source_Contig` on every row. **vRhyme** bins geNomad's viral
+contigs into vMAGs using the MetaBAT2 coverage table the MAG track already
+wrote. The `virus_all` target; `run_magmaker.sh` runs it in Stage 3 unless
+`--skip-virus` is given. See [Viral / plasmid track](viral.md).
 
 ---
 

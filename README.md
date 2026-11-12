@@ -1,6 +1,6 @@
 # MAGmaker
 
-A Snakemake pipeline for end-to-end processing of metagenomic shotgun sequencing data (paired-end or single-end). MAGmaker takes raw FASTQ files through quality control, host read removal, assembly, and taxonomic profiling, then — in a second stage — through mapping, binning, bin consolidation, and MAG QC to produce metagenome-assembled genomes (MAGs). An optional viral/plasmid discovery track (geNomad + CheckV) runs alongside the MAG track.
+A Snakemake pipeline for end-to-end processing of metagenomic shotgun sequencing data (paired-end or single-end). MAGmaker takes raw FASTQ files through quality control, host read removal, assembly, and taxonomic profiling, then — in a second stage — through mapping, binning, bin consolidation, and MAG QC to produce metagenome-assembled genomes (MAGs). A viral/plasmid discovery track (geNomad, with VIBRANT, Cenote-Taker3 and VirSorter2 behind switches; CheckV per predictor; vRhyme viral binning) runs alongside the MAG track.
 
 Developed by the [Moeller Lab](https://moellerlab.com) at Cornell University and Princeton University, and maintained by the [Sprockett Lab](https://www.sprockettlab.com/) at Wake Forest University School of Medicine.
 
@@ -29,7 +29,9 @@ BAMs + contigs → MetaBAT2 + MaxBin2 + CONCOCT + SemiBin2
 MAGs → CheckM2 + GUNC + GTDB-Tk + CMSeq → mag_summary.tsv → renamed_mags/
 
 Viral / plasmid track (`virus_all` target, run by default):
-contigs → geNomad → CheckV → virus_summary.tsv
+contigs → geNomad (+ VIBRANT, Cenote-Taker3, VirSorter2 behind switches)
+        → CheckV per predictor → virus_summary.tsv
+geNomad's viral contigs + MetaBAT2 coverage → vRhyme → vMAGs
 ```
 
 A `generate_binning_config` rule bridges the two stages: it reads
@@ -79,7 +81,7 @@ See the documentation below for details on each step.
 | [Database setup](docs/databases.md) | CheckM2, GUNC, GTDB-Tk, MetaPhlAn, Kraken2, geNomad, CheckV, host genome |
 | [Running the pipeline](docs/running.md) | Local, HPC/SLURM, `run_magmaker.sh` wrapper, per-run flags, stage-by-stage |
 | [Output](docs/output.md) | Directory layout, MAG summary table, renaming workflow, GTDB-Tk stages |
-| [Viral / plasmid track](docs/viral.md) | geNomad + CheckV, `virus_summary.tsv` |
+| [Viral / plasmid track](docs/viral.md) | viral predictors, CheckV, vRhyme; `virus_summary.tsv` |
 | [Running on DEMON (WFUSM)](docs/demon.md) | DEMON cluster setup, pre-configured databases and environments |
 
 ---

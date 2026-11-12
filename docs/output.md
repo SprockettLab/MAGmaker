@@ -46,7 +46,13 @@ output/
 │
 ├── virus/                              (binning pipeline, virus_all target; default)
 │   ├── genomad/{assembler}/{sample}/   viral + plasmid contig classification
-│   ├── checkv/{assembler}/{sample}/    CheckV quality for the viral contigs
+│   ├── {predictor}/{assembler}/{sample}/   VIBRANT, Cenote-Taker3, VirSorter2 (switched on)
+│   ├── checkv/{assembler}/{sample}/    CheckV quality for geNomad's viral contigs
+│   ├── checkv_{predictor}/.../          CheckV for each other predictor's calls
+│   ├── vrhyme/{assembler}/{sample}/    vRhyme inputs, prep_params.txt and results
+│   ├── virus_name_mapping.tsv          per predictor: how names mapped to source contigs
+│   ├── vrhyme_summary.tsv              one row per vMAG
+│   ├── vrhyme_membership.tsv           one row per contig, naming its vMAG
 │   └── virus_summary.tsv               merged per-sample viral + plasmid table
 │
 └── mag_qc/                             (binning pipeline)
@@ -136,8 +142,12 @@ and CONCOCT have their own minimum-length and marker-gene requirements.
 ## Viral summary table
 
 `output/virus/virus_summary.tsv` (from the `virus_all` target) has one row per
-viral or plasmid contig geNomad classified, with CheckV quality joined on for
-the viral rows.
+call per predictor, with that predictor's own CheckV quality joined on for the
+viral rows. `Predictor` names the tool and `Source_Contig` the contig in the
+assembly it came from, so nothing downstream parses a tool-specific name.
+Five provirus columns carry the provenance rather than one boolean. See
+[Viral / plasmid track](viral.md) for the per-tool name-mapping rules, the
+provirus columns and the vRhyme tables.
 
 | Column | Description |
 |---|---|

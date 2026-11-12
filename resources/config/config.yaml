@@ -437,8 +437,52 @@ params:
   genomad:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/genomad/genomad_db"  # genomad download-database <dir>
     extra: ''             # e.g. '--conservative' for higher-precision calls
+    # --enable-score-calibration. geNomad computes FDR only when scores are
+    # calibrated, and calibration is off in the tool's own default, so the
+    # FDR column of virus_summary.tsv is empty without this.
+    #
+    # It is NOT only additive: calibration also activates geNomad's --max-fdr
+    # filter (0.10 in its default preset, 0.05 under --conservative, 1.00
+    # under --relaxed), which is ignored when scores are not calibrated. So
+    # turning this on both fills in FDR and drops the calls that fail that
+    # threshold -- which is what geNomad's defaults are designed around.
+    #
+    # geNomad disables calibration by itself on an input of fewer than 1,000
+    # sequences, because it estimates the sample's composition. FDR is then
+    # empty for that assembly and no FDR filtering happens; the rule's
+    # params.txt records whether the flag was passed, and the geNomad log
+    # says whether calibration actually ran.
+    score_calibration: true
   checkv:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkv/checkv-db-v1.5"  # checkv download_database <dir>
+  # The other predictors and vRhyme run in existing environments, named here
+  # by folder, because their dependencies are too fragile to re-solve:
+  # VIBRANT needs scikit-learn 0.21.3 on a numpy that still has np.float;
+  # VirSorter2 needs one env meeting its per-rule pins (python 3.8,
+  # scikit-learn 0.22.1, screed), run with --use-conda-off; vRhyme needs
+  # scikit-learn 1.2.2, the last that can load its bundled model. These are
+  # the envs built and checked on demon on 2026-11-10/11. Elsewhere, build
+  # them the same way and point these at them (see docs/viral.md).
+  vibrant:
+    env: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/vibrant-1.2.1"
+    db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/vibrant/databases"      # VIBRANT -d (.HMM files)
+    files_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/vibrant/files"       # VIBRANT -m (.tsv and model files)
+  cenotetaker3:
+    env: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/cenotetaker3-3.4.4"
+    db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/cenotetaker3/ct3_DBs"
+    # -p T prunes host flanks from non-circular contigs, which upstream
+    # recommends for samples not enriched for viruses (stool, swabs).
+    prune: "T"
+  virsorter2:
+    env: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/virsorter2-2.2.4-single"
+    db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/virsorter2/db"
+  vrhyme:
+    env: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/vrhyme-1.1.0"
+    # vRhyme's floor; upstream states it cannot be lowered.
+    min_length: 2000
+    # Which mapper's MetaBAT2 coverage table to bin with; blank = the first
+    # of `mappers`.
+    mapper: ""
 
   # rRNA and tRNA genes per MAG (count_rrna_trna), for MIMAG_Quality_Full in
   # mag_summary.tsv. An rRNA gene counts when at least min_fraction of its
@@ -496,6 +540,27 @@ params:
 #      genome: resources/test/test_dbs/GCA_000001635.9.fna
 #
 # The host FASTA files named in either way are only read, never changed.
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VIRAL / PLASMID TRACK  (Stage 3 target virus_all; run_magmaker.sh runs it
+# unless --skip-virus)
+# ═════════════════════════════════════════════════════════════════════════════
+# One switch per tool. geNomad calls viruses AND plasmids in one run, so it
+# is one switch for both: plasmid calls exist only when genomad is on.
+# Each predictor's calls get CheckV on that predictor's own sequences, since
+# the tools differ in the boundaries CheckV corrects.
+# vRhyme is a binner, not a predictor: it joins geNomad's viral contigs
+# (proviruses excluded, >= params.vrhyme.min_length) into viral bins using
+# the MetaBAT2 coverage table the MAG track already writes, so it needs
+# genomad on and metabat2 among the binners.
+# Per run: --virus-predictors=genomad,vibrant and --skip-vrhyme.
+virus:
+  genomad: true
+  vrhyme: true
+  vibrant: false
+  cenotetaker3: false
+  virsorter2: false
+
 
 host_filter:
   boardercollie: true
@@ -568,6 +633,10 @@ threads:
   # 8  viral
   genomad: 16
   checkv: 8
+  vibrant: 16
+  cenotetaker3: 16
+  virsorter2: 16
+  vrhyme: 16
 
 
 # ═════════════════════════════════════════════════════════════════════════════
