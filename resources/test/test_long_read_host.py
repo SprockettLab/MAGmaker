@@ -153,6 +153,8 @@ def boardercollie_mode():
         p = subprocess.run(['snakemake', '-s', os.path.join(REPO_ROOT, 'Snakefile'),
                             '--configfile', os.path.join(REPO_ROOT, 'config.yaml'),
                             os.path.join(tmp, 'over.yaml'), '--cores', '2', '-d', tmp,
+                            # no small-file checksums, as for a real (gigabyte) host index
+                            '--max-checksum-file-size', '0',
                             'output/qc/host_filter_ont/S.counts.tsv'],
                            env={**os.environ, 'BOARDERCOLLIE_RUN_ID': 'test'},
                            capture_output=True, text=True)
@@ -173,6 +175,17 @@ def boardercollie_mode():
     check("the first run builds the shared index, not MAGmaker's own",
           'rule boardercollie_minimap2_index:' in logs[0]
           and 'rule host_minimap2_index:' not in logs[0])
+    first = os.path.join(base, 'runA')
+    again = subprocess.run(['snakemake', '-s', os.path.join(REPO_ROOT, 'Snakefile'),
+                            '--configfile', os.path.join(REPO_ROOT, 'config.yaml'),
+                            os.path.join(first, 'over.yaml'), '--cores', '2', '-d', first,
+                            '--max-checksum-file-size', '0', '-n',
+                            'output/qc/host_filter_ont/S.counts.tsv'],
+                           env={**os.environ, 'BOARDERCOLLIE_RUN_ID': 'test'},
+                           capture_output=True, text=True)
+    check("the first run folder has nothing to redo after the second ran",
+          again.returncode == 0 and 'Nothing to be done' in again.stdout + again.stderr,
+          (again.stdout + again.stderr)[-1500:])
     check("the second run folder builds no index",
           'rule boardercollie_minimap2_index:' not in logs[1]
           and 'rule host_minimap2_index:' not in logs[1]

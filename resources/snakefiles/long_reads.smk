@@ -82,7 +82,11 @@ rule host_filter_ont:
     """
     input:
         reads=lambda wildcards: long_reads_for(wildcards.sample),
-        index=HOST_MINIMAP2_INDEX
+        # ancient: with BoarderCollie on, the index is a hard link of the
+        # shared one, and every other run folder with this host touches it
+        # (Snakemake touches outputs after a job); without ancient that would
+        # rerun long-read host removal here. A rebuilt index still reruns this.
+        index=ancient(HOST_MINIMAP2_INDEX)
     output:
         nonhost="output/qc/host_filter_ont/nonhost/{sample}.ont.fastq.gz",
         bam="output/qc/host_filter_ont/host/{sample}.bam",
