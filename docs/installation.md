@@ -78,7 +78,8 @@ Each pipeline module has its own environment YAML in `resources/env/`:
 | `cutadapt.yaml` | `qc.smk` — non-default trimmer |
 | `fastqc.yaml` | `qc.smk` — all FastQC rules |
 | `qc.yaml` | `qc.smk` — host filter and index build (bowtie2, samtools, pigz) |
-| `assemble.yaml` | `assemble.smk` — MEGAHIT, metaSPAdes, QUAST |
+| `assemble.yaml` | `assemble.smk` — MEGAHIT, metaSPAdes |
+| `quast.yaml` | `assemble.smk` — QUAST, MetaQUAST (separate: needs python<3.12 for distutils) |
 | `mapping.yaml` | `mapping.smk`, and `cmseq.smk`'s mapping step — minimap2, bowtie2, samtools |
 | `prototype_selection.yaml` | `prototype_selection.smk` — sourmash, scikit-bio |
 | `profile.yaml` | `profile.smk` (MetaPhlAn 4, Kraken2, Bracken, Krona) and `cmseq.smk`'s `poly.py` |
