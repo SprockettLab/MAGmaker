@@ -103,19 +103,34 @@ def new_tmp():
     return tmp
 
 
+DONE_TARGET = os.path.join('output', 'qc', 'host_reference',
+                           'H.bowtie2_build.done')
+PARTS = ('1', '2', '3', '4', 'rev.1', 'rev.2')
+
+
+def shared_indexes(tmp):
+    """Folders of BoarderCollie's shared bowtie2 index for host H."""
+    base = os.path.join(tmp, 'idx', 'bt2', 'H')
+    return sorted(os.listdir(base)) if os.path.isdir(base) else []
+
+
+def linked_to(db_dir, tmp, key):
+    """Every index part in db_dir is the same file as the shared one."""
+    shared = os.path.join(tmp, 'idx', 'bt2', 'H', key, 'H')
+    return all(os.stat(f"{os.path.join(db_dir, 'H')}.{p}.bt2l").st_ino
+               == os.stat(f"{shared}.{p}.bt2l").st_ino for p in PARTS)
+
+
 def test_boardercollie_mode():
+    """The bowtie2 index is BoarderCollie's shared one: built once per host
+    key under index_dir, linked into each run folder. A second run folder
+    with the same host builds nothing; a changed host gets its own index."""
     tmp = new_tmp()
     db_dir = os.path.join(tmp, 'output', 'qc', 'host_reference')
     ref = os.path.join(db_dir, 'H.fna')
     done = os.path.join(db_dir, 'H.bowtie2_build.done')
-    # The reference and index are declared relative to the run directory.
-    done_target = os.path.join('output', 'qc', 'host_reference',
-                               'H.bowtie2_build.done')
-    stamp = os.path.join(db_dir, 'H.reference.md5')
     host1 = os.path.join(tmp, 'host1.fna')
     host2 = os.path.join(tmp, 'host2.fna')
-    # An older project config still naming a genome and index directory:
-    # with BoarderCollie on, neither is used or touched.
     old_dir = os.path.join(tmp, 'old_index')
     os.makedirs(old_dir)
     old_genome = os.path.join(old_dir, 'old_host.fna')
@@ -127,9 +142,10 @@ def test_boardercollie_mode():
     host1_md5, host1_mtime = md5(host1), os.stat(host1).st_mtime_ns
     write_config(tmp, hf, bc_section(
         tmp, [{'fasta': host1, 'tax_id': 9606}]))
-    first = snakemake(tmp, done_target)
+    first = snakemake(tmp, DONE_TARGET)
+    out = first.stdout + first.stderr
     check("BoarderCollie mode builds the reference and index",
-          first.returncode == 0, first.stdout + first.stderr)
+          first.returncode == 0, out)
     if first.returncode != 0:
         return
     check("joined reference written to output/qc/host_reference/<host>.fna",
@@ -137,56 +153,91 @@ def test_boardercollie_mode():
     check("older config's genome and db_dir left untouched",
           sorted(os.listdir(old_dir)) == ['old_host.fna']
           and read(old_genome) == ">old\nACGT\n")
-    check("the host in use is printed",
+    check("the host and the shared index are printed",
           'MAGmaker host reference: BoarderCollie, host H' in first.stderr
-          and 'not used while' in first.stderr, first.stderr)
+          and 'not used while' in first.stderr
+          and "BoarderCollie's shared bowtie2 index" in first.stderr,
+          first.stderr)
     check("members.tsv written beside the reference",
           os.path.exists(ref + '.members.tsv'))
-    check("index stamped with the reference's md5",
-          read(stamp).strip() == host1_md5)
-    check("sentinel records the md5", host1_md5 in read(done))
+    keys = shared_indexes(tmp)
+    check("the index is built once, in BoarderCollie's index_dir",
+          len(keys) == 1 and 'rule boardercollie_bowtie2:' in out, keys)
+    check("the run folder's index parts are links to the shared index",
+          keys and linked_to(db_dir, tmp, keys[0]))
+    check("sentinel names the reference and the shared index",
+          keys and ref.endswith(read(done).split('\n')[0].split('\t')[1])
+          and keys[0] in read(done), read(done))
+    check("no index of the run folder's own (no md5 stamp)",
+          not os.path.exists(os.path.join(db_dir, 'H.reference.md5')))
     check("original host FASTA unchanged",
           md5(host1) == host1_md5
           and os.stat(host1).st_mtime_ns == host1_mtime)
-    check("BoarderCollie's own indexes are not built",
-          not os.path.exists(os.path.join(tmp, 'idx')))
 
-    again = snakemake(tmp, '-n', done_target)
+    again = snakemake(tmp, '-n', DONE_TARGET)
     check("nothing to redo on an unchanged config",
           again.returncode == 0
           and 'Nothing to be done' in again.stdout + again.stderr,
           again.stdout + again.stderr)
 
-    # Same reference path, other contents: the old index must not be kept.
-    old_index = md5(os.path.join(db_dir, 'H.1.bt2'))
+    # A second run folder, same host and same shared store: links, no build.
+    other = new_tmp()
+    write_config(other, hf, bc_section(
+        tmp, [{'fasta': host1, 'tax_id': 9606}]))
+    second_folder = snakemake(other, DONE_TARGET)
+    out = second_folder.stdout + second_folder.stderr
+    check("a second run folder with the same host builds no index",
+          second_folder.returncode == 0
+          and 'rule boardercollie_bowtie2:' not in out
+          and 'rule boardercollie_bowtie2_out_H:' in out
+          and shared_indexes(tmp) == keys, out)
+    check("and links the same shared index",
+          keys and linked_to(os.path.join(other, 'output', 'qc',
+                                          'host_reference'), tmp, keys[0]))
+    shutil.rmtree(other)
+
+    # Other genomes: another host key, its own shared index, relinked here.
     write_config(tmp, hf, bc_section(
         tmp, [{'fasta': host2, 'tax_id': 9606}]))
-    second = snakemake(tmp, done_target)
-    check("changed host genomes run again", second.returncode == 0,
-          second.stdout + second.stderr)
-    if second.returncode != 0:
+    changed = snakemake(tmp, DONE_TARGET)
+    check("changed host genomes run again", changed.returncode == 0,
+          changed.stdout + changed.stderr)
+    if changed.returncode != 0:
         return
+    new_keys = shared_indexes(tmp)
+    new_key = [k for k in new_keys if k not in keys]
     check("reference at the same path now holds the new genome",
           read(ref) == read(host2))
-    check("index rebuilt for the new reference",
-          read(stamp).strip() == md5(host2)
-          and md5(os.path.join(db_dir, 'H.1.bt2')) != old_index)
-    log = read(os.path.join(tmp, 'output', 'logs', 'qc',
-                            'host_bowtie2_build', 'host_bowtie2_build.log'))
-    check("rebuild logged", log.startswith('Building'), log)
+    check("the changed host has its own shared index; the first is kept",
+          len(new_keys) == 2 and len(new_key) == 1, new_keys)
+    check("the run folder now links the new index, not the old one",
+          new_key and linked_to(db_dir, tmp, new_key[0]))
     check("first host FASTA still unchanged", md5(host1) == host1_md5)
+    shutil.rmtree(tmp)
 
-    # A complete index whose stamp matches is reused, not rebuilt.
-    os.remove(done)
-    index_mtime = os.stat(os.path.join(db_dir, 'H.1.bt2')).st_mtime_ns
-    third = snakemake(tmp, done_target)
-    log = read(os.path.join(tmp, 'output', 'logs', 'qc',
-                            'host_bowtie2_build', 'host_bowtie2_build.log'))
-    check("matching index reused",
-          third.returncode == 0 and 'reused' in log
-          and os.stat(os.path.join(db_dir, 'H.1.bt2')).st_mtime_ns
-          == index_mtime, third.stdout + third.stderr + log)
 
+def test_own_index_kept():
+    """A run folder that built its own index before shared indexes existed
+    (stamped <host>.reference.md5) keeps it and the old rule: nothing
+    reruns, nothing is built in the shared store."""
+    tmp = new_tmp()
+    db_dir = os.path.join(tmp, 'output', 'qc', 'host_reference')
+    os.makedirs(db_dir)
+    with open(os.path.join(db_dir, 'H.reference.md5'), 'w') as handle:
+        handle.write("0" * 32 + "\n")
+    hf = {'boardercollie': True, 'boardercollie_dir': BC_DIR}
+    write_config(tmp, hf, bc_section(
+        tmp, [{'fasta': os.path.join(tmp, 'host1.fna'), 'tax_id': 9606}]))
+    run = snakemake(tmp, DONE_TARGET)
+    out = run.stdout + run.stderr
+    log = read(os.path.join(tmp, 'output', 'logs', 'qc', 'host_bowtie2_build',
+                            'host_bowtie2_build.log')) if run.returncode == 0 else ''
+    check("a folder with its own index keeps the old rule",
+          run.returncode == 0 and 'kept as it is' in run.stderr
+          and 'rule boardercollie_bowtie2' not in out, out)
+    check("that rule (re)builds in the run folder when the stamp does not "
+          "match, as before", log.startswith('Building'), log)
+    check("nothing is built in the shared store", shared_indexes(tmp) == [])
     shutil.rmtree(tmp)
 
 
@@ -238,6 +289,10 @@ def test_config_errors():
                  "leave reference_out out", lambda t: {},
                  lambda t: bc_section(t, ['GCA_1.1'],
                                       reference_out=os.path.join(t, 'x.fna')))
+    expect_error("bowtie2_out given by hand is refused",
+                 "leave bowtie2_out out", lambda t: {},
+                 lambda t: bc_section(t, ['GCA_1.1'],
+                                      bowtie2_out=os.path.join(t, 'x')))
     ref_dir = lambda t: os.path.join(t, 'output', 'qc', 'host_reference')
 
     def own_fasta(tmp):
@@ -279,7 +334,9 @@ def test_automatic_clone():
     tmp = new_tmp()
     clone = os.path.join(tmp, 'external', 'BoarderCollie')
     head = git('rev-parse', 'HEAD', cwd=BC_DIR)
-    older = git('rev-parse', 'HEAD~1', cwd=BC_DIR)
+    # An older commit that already has bowtie2_out (MAGmaker sets it): the
+    # feature commit merged as HEAD's second parent.
+    older = git('rev-parse', 'HEAD^2', cwd=BC_DIR)
     bc = bc_section(tmp, [{'fasta': os.path.join(tmp, 'host1.fna'),
                            'tax_id': 9606}])
 
@@ -363,6 +420,7 @@ if __name__ == '__main__':
         sys.exit("Needs " + ", ".join(missing + ([] if BC_DIR else
                  ['BOARDERCOLLIE_DIR set to a BoarderCollie clone'])))
     test_boardercollie_mode()
+    test_own_index_kept()
     test_prebuilt_mode()
     test_config_errors()
     test_automatic_clone()
