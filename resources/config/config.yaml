@@ -541,6 +541,11 @@ threads:
 # value directly.
 
 mem_mb:
+  # The host bowtie2 index. Not measured: the 8 GB profile default stalled a
+  # build of an ~8.8 Gbp reference at its limit (WF18, 2026-11-11). Doubles on
+  # retry (retries.host_bowtie2_build, default 2) up to the _max.
+  host_bowtie2_build: 64000
+  host_bowtie2_build_max: 256000
   megahit: 256000
   spades: 256000
   multiqc: 32000

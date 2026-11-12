@@ -31,6 +31,10 @@ rule host_bowtie2_build:
     retries:
         config['retries'].get('host_bowtie2_build', 2)
     resources:
+        # Memory scales with the reference: the profile's 8 GB default held a
+        # build of the ~8.8 Gbp three-species vervet reference at its limit
+        # (MaxRSS 8,190,112 KB of 8,192,000) with almost no CPU progress.
+        mem_mb=mem_escalate('host_bowtie2_build', base_default=64000),
         runtime=runtime_escalate('host_bowtie2_build', base_default=1440)
     shell:
         # A complete index next to the reference is reused rather than
