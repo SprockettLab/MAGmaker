@@ -83,9 +83,13 @@ def bc_section(tmp, genomes, **host):
 def snakemake(tmp, *args):
     env = {**os.environ, 'BOARDERCOLLIE_RUN_ID': 'test'}
     return subprocess.run(
+        # No checksums: Snakemake skips the mtime check for files under 1 MB
+        # whose checksum is unchanged; a real host reference (gigabytes) never
+        # gets that, so the tests must not either.
         ['snakemake', '-s', os.path.join(REPO_ROOT, 'Snakefile'),
          '--configfile', os.path.join(REPO_ROOT, 'config.yaml'),
-         os.path.join(tmp, 'over.yaml'), '--cores', '1', '-d', tmp, *args],
+         os.path.join(tmp, 'over.yaml'), '--cores', '1', '-d', tmp,
+         '--max-checksum-file-size', '0', *args],
         env=env, capture_output=True, text=True)
 
 
@@ -194,6 +198,14 @@ def test_boardercollie_mode():
     check("and links the same shared index",
           keys and linked_to(os.path.join(other, 'output', 'qc',
                                           'host_reference'), tmp, keys[0]))
+    # The second folder's reference_out touched the shared library FASTA
+    # (the first folder's reference is a hard link of it): the first folder
+    # must still have nothing to do.
+    first_again = snakemake(tmp, '-n', DONE_TARGET)
+    check("the first folder has nothing to redo after the second ran",
+          first_again.returncode == 0
+          and 'Nothing to be done' in first_again.stdout + first_again.stderr,
+          first_again.stdout + first_again.stderr)
     shutil.rmtree(other)
 
     # Other genomes: another host key, its own shared index, relinked here.
