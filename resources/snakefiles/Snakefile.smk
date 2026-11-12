@@ -54,7 +54,7 @@ metaphlan_targets = (
 # Long-read targets, for samples with Platform ont rows only; none otherwise.
 long_read_targets = (
     expand("output/qc/host_filter_ont/{sample}.counts.tsv", sample=long_read_samples)
-    + expand("output/assemble/{assembler}/{sample}.draft.fasta",
+    + expand("output/assemble/{assembler}/{sample}.contigs.fasta",
              assembler=config.get("long_read_assemblers", []) or [], sample=long_read_samples)
 )
 

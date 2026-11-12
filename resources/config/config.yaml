@@ -452,6 +452,11 @@ params:
     # minimap2 -I for the host index: larger than the host reference, so the
     # index is one part (see rule host_minimap2_index).
     host_index_max_bases: 16G
+    # The ligation kit's DNA Control Strand (lambda phage). Long-read contigs
+    # with at least this fraction of their length aligned to it are removed
+    # after polishing, before binning and the viral track.
+    control_strand_fasta: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/lambda/NC_001416.1.fasta"
+    control_strand_min_aligned_fraction: 0.5
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -527,6 +532,7 @@ threads:
   host_filter_ont: 32
   flye: 64
   myloasm: 64
+  polish_long_read_assembly: 32
   # 2  assembly
   megahit: 16
   spades: 8
@@ -579,6 +585,7 @@ mem_mb:
   flye_max: 700000
   myloasm: 500000
   myloasm_max: 700000
+  polish_long_read_assembly: 64000   # bwa, Polypolish, pypolca; not measured
   megahit: 256000
   spades: 256000
   multiqc: 32000

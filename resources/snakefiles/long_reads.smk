@@ -235,3 +235,122 @@ rule myloasm:
         mv {output.draft}.partial {output.draft}
         mv {output.info}.partial {output.info}
         """
+
+
+# ---------------------------------------------------------------------------
+# Short-read polishing: Polypolish --careful, then pypolca --careful, with the
+# sample's QC'd, host-filtered short reads (nonhost_reads). Nothing else.
+# Careful mode ignores reads that align equally well to several places and
+# changes a base only with strong agreement, so related strains in one sample
+# are less likely to pull a contig toward the wrong one.
+# ---------------------------------------------------------------------------
+
+_single_end_lr = [s for s in long_read_samples if is_single_end(s)]
+if _single_end_lr:
+    _fail("long-read sample(s) with single-end short reads: %s\n"
+          "Polypolish and pypolca need paired short reads." % ", ".join(_single_end_lr))
+
+
+rule polish_long_read_assembly:
+    """
+    bwa mem -a for each mate separately, polypolish filter, polypolish polish
+    --careful, pypolca run --careful. The draft is kept. Polishing must keep
+    every contig name (checked by polish_changes.py, which also writes the
+    bases each stage changed per contig).
+    """
+    input:
+        draft="output/assemble/{lr_assembler}/{sample}.draft.fasta",
+        reads=lambda wildcards: nonhost_reads(wildcards.sample)
+    output:
+        polished="output/assemble/{lr_assembler}/{sample}.polished.fasta",
+        changes="output/assemble/{lr_assembler}/{sample}.polish_changes.tsv"
+    params:
+        workdir="output/assemble/{lr_assembler}/{sample}_polish",
+        script=os.path.join(LONG_READ_SCRIPTS, "polish_changes.py")
+    wildcard_constraints:
+        lr_assembler="flye|myloasm"
+    conda:
+        "../env/polish.yaml"
+    threads:
+        config['threads'].get('polish_long_read_assembly', 32)
+    retries:
+        config['retries'].get('polish_long_read_assembly', 1)
+    resources:
+        mem_mb=mem_escalate('polish_long_read_assembly', base_default=64000),
+        runtime=runtime_escalate('polish_long_read_assembly', base_default=2880)
+    log:
+        "output/logs/assemble/polish/{lr_assembler}/{sample}.log"
+    benchmark:
+        "output/benchmarks/assemble/polish/{lr_assembler}/{sample}_benchmark.txt"
+    shell:
+        """
+        W={params.workdir}
+        rm -rf "$W" && mkdir -p "$W"
+        {{
+        echo "polypolish $(polypolish --version) pypolca $(pypolca --version 2>&1 | tail -1) bwa $(bwa 2>&1 | grep -i '^version' | cut -d' ' -f2)"
+        bwa index -p "$W/draft" {input.draft}
+        bwa mem -t {threads} -a "$W/draft" {input.reads[0]} > "$W/align_R1.sam"
+        bwa mem -t {threads} -a "$W/draft" {input.reads[1]} > "$W/align_R2.sam"
+        polypolish filter --in1 "$W/align_R1.sam" --in2 "$W/align_R2.sam" \
+            --out1 "$W/filtered_R1.sam" --out2 "$W/filtered_R2.sam"
+        polypolish polish --careful {input.draft} "$W/filtered_R1.sam" "$W/filtered_R2.sam" \
+            > "$W/polypolish.fasta"
+        rm -f "$W"/align_R?.sam "$W"/filtered_R?.sam "$W"/draft.*
+        pypolca run -a "$W/polypolish.fasta" -1 {input.reads[0]} -2 {input.reads[1]} \
+            -t {threads} -o "$W/pypolca" --careful --force
+        # Keep only the contig name in each header; the polishers append text.
+        awk '/^>/ {{print $1; next}} {{print}}' "$W/pypolca/pypolca_corrected.fasta" > "$W/final.fasta"
+        awk '/^>/ {{print $1; next}} {{print}}' "$W/polypolish.fasta" > "$W/polypolish.clean.fasta"
+        python {params.script} --draft {input.draft} --polypolish "$W/polypolish.clean.fasta" \
+            --final "$W/final.fasta" --out {output.changes}.partial
+        }} > {log} 2>&1
+        mv "$W/final.fasta" {output.polished}
+        mv {output.changes}.partial {output.changes}
+        rm -rf "$W"
+        """
+
+
+# ---------------------------------------------------------------------------
+# DNA Control Strand removal, right after polishing and before anything else
+# reads the assembly: lambda is a phage, so the viral track would report it.
+# The result is output/assemble/<assembler>/<sample>.contigs.fasta, the same
+# pattern as MEGAHIT's, which binning and the viral track read.
+# ---------------------------------------------------------------------------
+
+rule remove_control_strand:
+    """
+    Contigs at least params.long_reads.control_strand_min_aligned_fraction
+    (0.5) aligned to the ligation kit's DNA Control Strand (lambda,
+    NC_001416.1; params.long_reads.control_strand_fasta) are removed and kept
+    aside with a table. Checks kept + removed = contigs in.
+    """
+    input:
+        polished="output/assemble/{lr_assembler}/{sample}.polished.fasta",
+        control=long_read_param("control_strand_fasta",
+            "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/lambda/NC_001416.1.fasta")
+    output:
+        contigs="output/assemble/{lr_assembler}/{sample}.contigs.fasta",
+        removed="output/assemble/{lr_assembler}/{sample}.control_strand.fasta",
+        table="output/assemble/{lr_assembler}/{sample}.control_strand.tsv"
+    params:
+        min_fraction=long_read_param("control_strand_min_aligned_fraction", 0.5),
+        script=os.path.join(LONG_READ_SCRIPTS, "control_strand.py")
+    wildcard_constraints:
+        lr_assembler="flye|myloasm"
+    conda:
+        "../env/long_read_qc.yaml"
+    threads: 4
+    resources:
+        mem_mb=16000,
+        runtime=240
+    log:
+        "output/logs/assemble/control_strand/{lr_assembler}/{sample}.log"
+    shell:
+        """
+        minimap2 -c -t {threads} {input.control} {input.polished} 2> {log} > {output.table}.paf
+        python {params.script} --contigs {input.polished} --paf {output.table}.paf \
+            --min-fraction {params.min_fraction} --kept {output.contigs}.partial \
+            --removed {output.removed} --table {output.table} 2>> {log}
+        rm -f {output.table}.paf
+        mv {output.contigs}.partial {output.contigs}
+        """
