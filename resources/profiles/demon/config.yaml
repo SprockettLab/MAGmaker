@@ -84,6 +84,13 @@ set-resources:
     runtime: 1440
   boardercollie_combine:
     runtime: 480
+  # The shared host indexes, built once per host key (BoarderCollie sets
+  # threads 32 / 300 GB for bowtie2, 16 / 120 GB for minimap2). A ~8.8 Gbp
+  # reference takes hours to index; 2 days and 8 h leave room.
+  boardercollie_bowtie2:
+    runtime: 2880
+  boardercollie_minimap2_index:
+    runtime: 480
   metaspades:
     mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
                         # input-scaled floor; this overrides it. defq nodes
