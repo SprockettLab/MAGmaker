@@ -24,7 +24,9 @@ rule host_bowtie2_build:
     # which reference and which shared index host_filter uses.
     input:
         index=host_base + ".index_done.txt",
-        reference=host_reference,
+        # ancient: a hard link of BoarderCollie's shared library FASTA, which
+        # other run folders with this host touch (see host_index_boardercollie.smk).
+        reference=ancient(host_reference),
         members=host_reference + ".members.tsv"
     output:
         host_base + ".bowtie2_build.done"
