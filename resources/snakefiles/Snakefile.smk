@@ -20,6 +20,7 @@ wildcard_constraints:
     seqrun=r"[^/]+"
 
 include: "resources/snakefiles/qc.smk"
+include: "resources/snakefiles/long_reads.smk"
 include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/prototype_selection.smk"
 include: "resources/snakefiles/profile.smk"
@@ -50,8 +51,14 @@ metaphlan_targets = (
     if 'metaphlan' in _biobakery else []
 )
 
+# Long-read targets, for samples with Platform ont rows only; none otherwise.
+long_read_targets = (
+    expand("output/qc/host_filter_ont/{sample}.counts.tsv", sample=long_read_samples)
+)
+
 rule all:
     input:
+        *long_read_targets,
         "output/qc/multiqc/multiqc.html",
         "output/assemble/multiqc_assemble/multiqc.html",
         "output/prototype_selection/sourmash_plot",

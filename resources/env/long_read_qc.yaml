@@ -1,0 +1,12 @@
+# Long-read host removal: minimap2 map-ont, samtools for the host BAM, seqkit to
+# drop host reads by ID, python for the host-fraction helper.
+# conda-forge first, bioconda second, no defaults: the order bioconda requires.
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python>=3.10
+  - minimap2>=2.28
+  - samtools>=1.21
+  - seqkit>=2.8

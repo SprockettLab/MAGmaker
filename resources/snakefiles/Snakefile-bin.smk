@@ -73,6 +73,7 @@ def get_contigs(sample, binning_df):
     return(binning_df.loc[sample, 'Contigs'])
 
 include: "resources/snakefiles/qc.smk"
+include: "resources/snakefiles/long_reads.smk"
 include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/mapping.smk"
 include: "resources/snakefiles/binning.smk"
