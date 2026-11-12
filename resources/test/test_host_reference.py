@@ -336,6 +336,26 @@ def test_automatic_clone():
     shutil.rmtree(tmp)
 
 
+def test_mitochondrion_passes_through():
+    """A genome entry naming its species' mitochondrion (BoarderCollie's
+    mitochondrion key) is planned through MAGmaker: fetched, then joined
+    right after its genome."""
+    tmp = new_tmp()
+    host1 = os.path.join(tmp, 'host1.fna')
+    hf = {'boardercollie': True, 'boardercollie_dir': BC_DIR}
+    write_config(tmp, hf, bc_section(
+        tmp, [{'fasta': host1, 'tax_id': 9606,
+               'mitochondrion': 'NC_012920.1'}]))
+    dry = snakemake(tmp, '-n', '-p', os.path.join(
+        'output', 'qc', 'host_reference', 'H.bowtie2_build.done'))
+    out = dry.stdout + dry.stderr
+    check("a mitochondrion entry plans", dry.returncode == 0, out[-2000:])
+    check("its fetch step is planned",
+          'rule boardercollie_fetch_mitochondrion:' in out, out[-2000:])
+    check("it is joined after its genome",
+          '--accessions host1 NC_012920.1 ' in out, out[-2000:])
+
+
 if __name__ == '__main__':
     missing = [tool for tool in ('snakemake', 'bowtie2-build')
                if shutil.which(tool) is None]
@@ -346,5 +366,6 @@ if __name__ == '__main__':
     test_prebuilt_mode()
     test_config_errors()
     test_automatic_clone()
+    test_mitochondrion_passes_through()
     print("\n{} failure(s)".format(len(FAILURES)))
     sys.exit(1 if FAILURES else 0)
