@@ -112,7 +112,76 @@ def main():
     shutil.rmtree(tmp)
 
 
+def boardercollie_mode():
+    """With BoarderCollie on, the long-read index is BoarderCollie's shared
+    one: built once per host key under index_dir and linked into the run
+    folder; a second run folder with the same host builds no index."""
+    bc_dir = os.environ.get('BOARDERCOLLIE_DIR')
+    if not bc_dir:
+        check("BOARDERCOLLIE_DIR set for the BoarderCollie-mode test", False)
+        return
+    rng = random.Random(5)
+    seq = lambda n: "".join(rng.choice("ACGT") for _ in range(n))
+    base = tempfile.mkdtemp(prefix='magmaker_lr_bc_', dir=os.environ.get('TMPDIR'))
+    host = seq(100000)
+    host_fa = os.path.join(base, 'host1.fna')
+    with open(host_fa, 'w') as fh:
+        fh.write(">chr1\n" + host + "\n")
+    ont = os.path.join(base, 'S.ont.fastq.gz')
+    with gzip.open(ont, 'wt') as fh:
+        for k, v in {"r_host": host[1000:7000], "r_clean": seq(5000)}.items():
+            fh.write(f"@{k}\n{v}\n+\n{'5' * len(v)}\n")
+    shared = {'library_dir': os.path.join(base, 'lib'), 'index_dir': os.path.join(base, 'idx'),
+              'work_dir': os.path.join(base, 'work'),
+              'hosts': [{'name': 'H', 'genomes': [{'fasta': host_fa, 'tax_id': 9606}]}],
+              'settings': {'download_only': True}}
+    logs = []
+    for run in ('runA', 'runB'):
+        tmp = os.path.join(base, run)
+        os.makedirs(tmp)
+        os.symlink(os.path.join(REPO_ROOT, 'resources'), os.path.join(tmp, 'resources'))
+        meta = os.path.join(tmp, 'metadata.txt')
+        with open(meta, 'w') as fh:
+            fh.write("Sample\tSequencing_Run\tPlatform\tR1_fp\tR2_fp\n")
+            fh.write("S\tRun_1\tillumina\tresources/test/test_reads/John_R1.fastq.gz\t"
+                     "resources/test/test_reads/John_R2.fastq.gz\n")
+            fh.write(f"S\tONT1\tont\t{ont}\tNA\n")
+        with open(os.path.join(tmp, 'over.yaml'), 'w') as fh:
+            yaml.safe_dump({'metadata': meta,
+                            'host_filter': {'boardercollie': True, 'boardercollie_dir': bc_dir},
+                            'boardercollie': shared}, fh)
+        p = subprocess.run(['snakemake', '-s', os.path.join(REPO_ROOT, 'Snakefile'),
+                            '--configfile', os.path.join(REPO_ROOT, 'config.yaml'),
+                            os.path.join(tmp, 'over.yaml'), '--cores', '2', '-d', tmp,
+                            'output/qc/host_filter_ont/S.counts.tsv'],
+                           env={**os.environ, 'BOARDERCOLLIE_RUN_ID': 'test'},
+                           capture_output=True, text=True)
+        logs.append(p.stdout + p.stderr)
+        check(f"{run}: long-read host removal runs with BoarderCollie on", p.returncode == 0,
+              logs[-1])
+        if p.returncode != 0:
+            return
+        kept = fastq_names(os.path.join(tmp, 'output', 'qc', 'host_filter_ont', 'nonhost',
+                                        'S.ont.fastq.gz'))
+        check(f"{run}: host read removed, clean read kept", kept == ['r_clean'], kept)
+        shared_mmi = [os.path.join(r, f) for r, _, fs in os.walk(os.path.join(base, 'idx', 'minimap2'))
+                      for f in fs if f.endswith('.mmi')]
+        linked = os.path.join(tmp, 'output', 'qc', 'host_reference', 'H.map-ont.mmi')
+        check(f"{run}: one shared index, linked into the run folder",
+              len(shared_mmi) == 1 and os.path.exists(linked)
+              and os.stat(linked).st_ino == os.stat(shared_mmi[0]).st_ino, shared_mmi)
+    check("the first run builds the shared index, not MAGmaker's own",
+          'rule boardercollie_minimap2_index:' in logs[0]
+          and 'rule host_minimap2_index:' not in logs[0])
+    check("the second run folder builds no index",
+          'rule boardercollie_minimap2_index:' not in logs[1]
+          and 'rule host_minimap2_index:' not in logs[1]
+          and 'rule boardercollie_minimap2_out_H:' in logs[1], logs[1][-1500:])
+    shutil.rmtree(base)
+
+
 if __name__ == '__main__':
     main()
+    boardercollie_mode()
     print("\n%d failure(s)" % len(FAILURES))
     sys.exit(1 if FAILURES else 0)

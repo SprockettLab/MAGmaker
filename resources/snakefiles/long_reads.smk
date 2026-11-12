@@ -6,6 +6,7 @@
 # same jobs as before. Steps, in order:
 #
 #   host_minimap2_index   the run's host reference, indexed for map-ont
+#                         (BoarderCollie's shared index when it is on)
 #   host_filter_ont       host reads removed (union of aligned bases >= 50%)
 #
 # The host reference is the one the run's short reads are filtered against
@@ -22,39 +23,49 @@ def long_read_param(key, default):
     return LONG_READ_PARAMS.get(key, default)
 
 
-rule host_minimap2_index:
-    """
-    The run's host reference indexed for minimap2 map-ont. Built as ONE index
-    part (-I larger than the reference): minimap2 splits a reference larger
-    than -I (default 8 Gbp; Chlorocebus_spp is about 8.8 Gbp) into parts and,
-    without --split-prefix, aligns each part independently, so a read could
-    receive one "primary" alignment per part and the host rule would count
-    them as if they were one alignment set.
-    """
-    input:
-        ref=host_reference
-    output:
-        "output/qc/host_filter_ont/index/host.map-ont.mmi"
-    params:
-        split=long_read_param("host_index_max_bases", "16G")
-    conda:
-        "../env/long_read_qc.yaml"
-    threads:
-        config['threads'].get('host_minimap2_index', 8)
-    retries:
-        config['retries'].get('host_minimap2_index', 1)
-    resources:
-        mem_mb=mem_escalate('host_minimap2_index', base_default=64000),
-        runtime=runtime_escalate('host_minimap2_index', base_default=240)
-    log:
-        "output/logs/qc/host_filter_ont/host_minimap2_index.log"
-    benchmark:
-        "output/benchmarks/qc/host_filter_ont/host_minimap2_index_benchmark.txt"
-    shell:
+# The host's minimap2 map-ont index. With BoarderCollie on (the default) it
+# is BoarderCollie's shared index, built once per host key in its index_dir
+# and linked to host_minimap2_out (host_reference.smk), so no run folder
+# builds its own. With BoarderCollie off (host_filter.genome used as it is),
+# MAGmaker indexes that FASTA in the run folder.
+if USE_BOARDERCOLLIE:
+    HOST_MINIMAP2_INDEX = host_minimap2_out
+else:
+    HOST_MINIMAP2_INDEX = "output/qc/host_filter_ont/index/host.map-ont.mmi"
+
+    rule host_minimap2_index:
         """
-        minimap2 -x map-ont -I {params.split} -t {threads} -d {output}.partial {input.ref} 2> {log}
-        mv {output}.partial {output}
+        The run's host reference indexed for minimap2 map-ont. Built as ONE index
+        part (-I larger than the reference): minimap2 splits a reference larger
+        than -I (default 8 Gbp; Chlorocebus_spp is about 8.8 Gbp) into parts and,
+        without --split-prefix, aligns each part independently, so a read could
+        receive one "primary" alignment per part and the host rule would count
+        them as if they were one alignment set.
         """
+        input:
+            ref=host_reference
+        output:
+            HOST_MINIMAP2_INDEX
+        params:
+            split=long_read_param("host_index_max_bases", "16G")
+        conda:
+            "../env/long_read_qc.yaml"
+        threads:
+            config['threads'].get('host_minimap2_index', 8)
+        retries:
+            config['retries'].get('host_minimap2_index', 1)
+        resources:
+            mem_mb=mem_escalate('host_minimap2_index', base_default=64000),
+            runtime=runtime_escalate('host_minimap2_index', base_default=240)
+        log:
+            "output/logs/qc/host_filter_ont/host_minimap2_index.log"
+        benchmark:
+            "output/benchmarks/qc/host_filter_ont/host_minimap2_index_benchmark.txt"
+        shell:
+            """
+            minimap2 -x map-ont -I {params.split} -t {threads} -d {output}.partial {input.ref} 2> {log}
+            mv {output}.partial {output}
+            """
 
 
 rule host_filter_ont:
@@ -71,7 +82,7 @@ rule host_filter_ont:
     """
     input:
         reads=lambda wildcards: long_reads_for(wildcards.sample),
-        index=rules.host_minimap2_index.output
+        index=HOST_MINIMAP2_INDEX
     output:
         nonhost="output/qc/host_filter_ont/nonhost/{sample}.ont.fastq.gz",
         bam="output/qc/host_filter_ont/host/{sample}.bam",
