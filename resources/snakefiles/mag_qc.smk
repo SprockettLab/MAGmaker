@@ -448,8 +448,7 @@ rule count_rrna_trna:
     params:
         bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
         script=os.path.join(workflow.current_basedir, "..", "scripts", "count_rrna_trna.py"),
-        partial_5s=("--count-partial-5s"
-                    if config['params'].get('rrna_trna', {}).get('count_partial_5s', False) else "")
+        min_fraction=config['params'].get('rrna_trna', {}).get('min_fraction', 0.5)
     threads:
         config['threads'].get('count_rrna_trna', 4)
     retries:
@@ -465,7 +464,7 @@ rule count_rrna_trna:
     shell:
         """
         python {params.script} --bins-dir {params.bins_dir} --out {output.table} \
-            --threads {threads} {params.partial_5s} 2> {log}
+            --threads {threads} --min-fraction {params.min_fraction} 2> {log}
         """
 
 

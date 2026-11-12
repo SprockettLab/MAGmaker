@@ -95,7 +95,7 @@ After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one
 | `Contamination` | CheckM2 contamination (%) |
 | `Quality_Score` | Completeness − 5 × Contamination |
 | `MIMAG_Quality` | MIMAG quality tier: `HQ` (≥90% complete, <5% contamination), `MQ` (≥50%, <10%), `LQ` (all else) |
-| `rRNA_5S`, `rRNA_16S`, `rRNA_23S` | Complete rRNA genes found by barrnap (larger count of its bacterial and archaeal models; a partial 5S counts only with `params.rrna_trna.count_partial_5s`) |
+| `rRNA_5S`, `rRNA_16S`, `rRNA_23S` | rRNA genes found by barrnap with at least `params.rrna_trna.min_fraction` (default 0.5) of the gene's expected length aligned, the same rule for all three genes (larger count of its bacterial and archaeal models) |
 | `tRNA_Amino_Acids` | Standard amino acids (of 20) with at least one tRNA, from tRNAscan-SE |
 | `MIMAG_Quality_Full` | MIMAG tier with every criterion: `HQ` also needs 5S, 16S and 23S rRNA and tRNAs for at least 18 amino acids; otherwise as `MIMAG_Quality` |
 | `GUNC_Clade_Separation_Score` | GUNC chimera score |

@@ -2,10 +2,13 @@
 """rRNA and tRNA genes per MAG, for the full MIMAG high-quality standard.
 
 For every *.fa in a bin directory:
-  rRNA  barrnap with the bacterial and with the archaeal model; complete genes
-        only (records marked partial are not counted), except 5S when
-        --count-partial-5s is given (barrnap often marks real 5S genes partial,
-        being short); per gene (5S, 16S, 23S) the larger of the two models' counts.
+  rRNA  barrnap with the bacterial and with the archaeal model. A gene counts
+        when at least --min-fraction of its expected length aligned, one rule
+        for 5S, 16S and 23S. barrnap labels a gene partial below 80% of the
+        expected length and writes "aligned only N percent" for it; genes
+        without that note are complete (100%). barrnap itself drops genes below
+        its --reject fraction (default 0.25), which is lowered to --min-fraction
+        when that is smaller. Per gene, the larger of the two models' counts.
   tRNA  tRNAscan-SE, general model (-G): the number of the 20 standard amino
         acids with at least one tRNA.
 Every MAG in the directory is measured. Writes one row per MAG; an empty
@@ -17,6 +20,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,9 +30,20 @@ AMINO_ACIDS = {"Ala", "Arg", "Asn", "Asp", "Cys", "Gln", "Glu", "Gly", "His", "I
                "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val"}
 
 
-def complete_rrna(gff_text: str, partial_ok: tuple = ()) -> dict[str, int]:
-    """Complete 5S, 16S and 23S genes in one barrnap GFF; genes named in
-    partial_ok are counted even when barrnap marks them partial."""
+BARRNAP_REJECT = 0.25   # barrnap's own default --reject
+ALIGNED = re.compile(r"aligned only (\d+) percent")
+
+
+def aligned_fraction(attributes: str) -> float:
+    """Fraction of the expected gene length barrnap aligned: from its
+    'aligned only N percent' note, or 1.0 when there is none (not partial)."""
+    m = ALIGNED.search(attributes)
+    return int(m.group(1)) / 100 if m else 1.0
+
+
+def count_rrna(gff_text: str, min_fraction: float) -> dict[str, int]:
+    """5S, 16S and 23S genes in one barrnap GFF with at least min_fraction of
+    their expected length aligned."""
     n = {g: 0 for g in RRNA}
     for line in gff_text.splitlines():
         if line.startswith("#") or not line.strip():
@@ -37,7 +52,7 @@ def complete_rrna(gff_text: str, partial_ok: tuple = ()) -> dict[str, int]:
         if len(f) < 9:
             continue
         name = f[8].split(";")[0].replace("Name=", "")
-        if name in n and ("partial" not in f[8] or name in partial_ok):
+        if name in n and aligned_fraction(f[8]) >= min_fraction:
             n[name] += 1
     return n
 
@@ -61,10 +76,15 @@ def run(cmd):
     return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
 
 
-def measure(fasta: str, threads: int, partial_ok: tuple = ()) -> dict:
-    rrna = best_of(
-        complete_rrna(run(["barrnap", "--kingdom", "bac", "--threads", str(threads), "--quiet", fasta]), partial_ok),
-        complete_rrna(run(["barrnap", "--kingdom", "arc", "--threads", str(threads), "--quiet", fasta]), partial_ok))
+def barrnap(kingdom: str, fasta: str, threads: int, min_fraction: float) -> str:
+    reject = min(BARRNAP_REJECT, min_fraction)
+    return run(["barrnap", "--kingdom", kingdom, "--threads", str(threads),
+                "--reject", str(reject), "--quiet", fasta])
+
+
+def measure(fasta: str, threads: int, min_fraction: float) -> dict:
+    rrna = best_of(count_rrna(barrnap("bac", fasta, threads, min_fraction), min_fraction),
+                   count_rrna(barrnap("arc", fasta, threads, min_fraction), min_fraction))
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "trna.txt")
         subprocess.run(["tRNAscan-SE", "-G", "-Q", "--thread", str(threads), "-o", out, fasta],
@@ -78,17 +98,20 @@ def main(argv=None):
     p.add_argument("--bins-dir", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--threads", type=int, default=4)
-    p.add_argument("--count-partial-5s", action="store_true")
+    p.add_argument("--min-fraction", type=float, default=0.5,
+                   help="fraction of a gene's expected length that must align (all rRNA genes)")
     a = p.parse_args(argv)
-    partial_ok = ("5S_rRNA",) if a.count_partial_5s else ()
+    if not 0 < a.min_fraction <= 1:
+        sys.exit(f"--min-fraction must be in (0, 1], got {a.min_fraction}")
     bins = sorted(glob.glob(os.path.join(a.bins_dir, "*.fa")))
     with open(a.out + ".partial", "w") as fh:
-        rule = "complete genes, partial 5S also counted" if partial_ok else "complete genes only"
-        fh.write(f"# barrnap (bac and arc, {rule}, larger count per gene) and tRNAscan-SE -G; "
-                 f"all {len(bins)} MAGs measured\n")
+        fh.write(f"# barrnap (bac and arc, --reject {min(BARRNAP_REJECT, a.min_fraction)}; "
+                 f"a gene counts at >= {a.min_fraction:g} of expected length aligned, "
+                 f"same for 5S, 16S, 23S; larger count of the two models per gene) "
+                 f"and tRNAscan-SE -G; all {len(bins)} MAGs measured\n")
         fh.write("bin\trRNA_5S\trRNA_16S\trRNA_23S\ttRNA_Amino_Acids\n")
         for f in bins:
-            m = measure(f, a.threads, partial_ok)
+            m = measure(f, a.threads, a.min_fraction)
             name = os.path.splitext(os.path.basename(f))[0]
             fh.write(f"{name}\t{m['5S_rRNA']}\t{m['16S_rRNA']}\t{m['23S_rRNA']}\t{m['tRNA']}\n")
     os.replace(a.out + ".partial", a.out)
