@@ -1,0 +1,9 @@
+# rRNA and tRNA genes in MAGs (count_rrna_trna).
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python>=3.10
+  - barrnap>=0.9
+  - trnascan-se>=2.0.12

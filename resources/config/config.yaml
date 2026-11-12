@@ -440,6 +440,15 @@ params:
   checkv:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkv/checkv-db-v1.5"  # checkv download_database <dir>
 
+  # rRNA and tRNA genes per MAG (count_rrna_trna), for MIMAG_Quality_Full in
+  # mag_summary.tsv. barrnap marks genes it only partly aligns as partial;
+  # only complete genes are counted unless this is true, in which case a
+  # partial 5S is also counted (5S genes are short and often marked partial;
+  # 16S and 23S stay complete-only). Whichever rule ran is written into each
+  # rrna_trna.tsv.
+  rrna_trna:
+    count_partial_5s: false
+
   # ── LONG READS (Platform ont rows; unused without them) ────────────────────
 
   long_reads:

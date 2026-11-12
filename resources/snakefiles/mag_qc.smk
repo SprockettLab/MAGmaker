@@ -434,6 +434,41 @@ rule run_gtdbtk:
         """
 
 
+rule count_rrna_trna:
+    """
+    rRNA (barrnap, bacterial and archaeal models) and tRNA (tRNAscan-SE)
+    genes in every MAG of a binning row, for the full MIMAG high-quality
+    standard (5S, 16S and 23S rRNA present, tRNAs for at least 18 of the 20
+    standard amino acids). count_rrna_trna.py holds the counting rules.
+    """
+    input:
+        done=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}/.done"
+    output:
+        table="output/mag_qc/rrna_trna/{mapper}/{contig_sample}/rrna_trna.tsv"
+    params:
+        bins_dir=f"output/selected_bins/{{mapper}}/{SELECTED_FASTAS}/{{contig_sample}}",
+        script=os.path.join(workflow.current_basedir, "..", "scripts", "count_rrna_trna.py"),
+        partial_5s=("--count-partial-5s"
+                    if config['params'].get('rrna_trna', {}).get('count_partial_5s', False) else "")
+    threads:
+        config['threads'].get('count_rrna_trna', 4)
+    retries:
+        config['retries'].get('count_rrna_trna', 1)
+    resources:
+        runtime=runtime_escalate('count_rrna_trna', base_default=240)
+    conda:
+        "../env/rrna_trna.yaml"
+    log:
+        "output/logs/mag_qc/rrna_trna/{mapper}/{contig_sample}.log"
+    benchmark:
+        "output/benchmarks/mag_qc/rrna_trna/{mapper}/{contig_sample}.txt"
+    shell:
+        """
+        python {params.script} --bins-dir {params.bins_dir} --out {output.table} \
+            --threads {threads} {params.partial_5s} 2> {log}
+        """
+
+
 rule make_mag_summary:
     """
     Collects all MAGs across samples, assigns globally sequential IDs (MAG_0001...N),
@@ -484,7 +519,16 @@ rule make_mag_summary:
             "output/mag_qc/cmseq/{mapper}/{contig_sample}/strain_heterogeneity.tsv",
             mapper=config['mappers'],
             contig_sample=list(contig_pairings.keys())
-        ) if cmseq_enabled() else [])
+        ) if cmseq_enabled() else []),
+        rrna_trna=lambda wildcards: expand(
+            "output/mag_qc/rrna_trna/{mapper}/{contig_sample}/rrna_trna.tsv",
+            mapper=config['mappers'],
+            contig_sample=list(contig_pairings.keys())
+        ),
+        # A long-read row's contig table, for circular contigs and Closed.
+        contig_info=lambda wildcards: [
+            "output/assemble/{0}/{1}.contig_info.tsv".format(assembler_of(r), sample_of(r))
+            for r in contig_pairings if is_long_read_row(r)]
     output:
         summary="output/mag_qc/mag_summary.tsv"
     params:
@@ -498,6 +542,9 @@ rule make_mag_summary:
         assemblers=config['assemblers'],
         row_sample={r: sample_of(r) for r in contig_pairings},
         row_assembler={r: assembler_of(r) for r in contig_pairings},
+        row_contig_info={r: "output/assemble/{0}/{1}.contig_info.tsv".format(assembler_of(r), sample_of(r))
+                         for r in contig_pairings if is_long_read_row(r)},
+        rrna_base="output/mag_qc/rrna_trna",
         consolidation_tool=consolidation_tool(),
         selected_fastas=SELECTED_FASTAS
     retries:
