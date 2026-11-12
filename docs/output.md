@@ -51,7 +51,8 @@ output/
     ├── gtdbtk/{mapper}/{sample}/       GTDB-Tk output (.identify.done / .align.done / .done sentinels)
     ├── cmseq/{mapper}/{sample}/        CMSeq strain-heterogeneity per MAG
     ├── mag_summary.tsv                 combined MAG table — editable
-    └── renamed_mags/                   final MAG FASTAs with user-defined names
+    └── renamed_mags/                   final MAG FASTAs with user-defined names; contigs renamed
+                                        <MAG_ID>__<original name>, listed in contig_map.tsv
 ```
 
 Only one of `DAS_Tool_Fastas/` and `Binette_Fastas/` is produced per run,
@@ -167,6 +168,8 @@ snakemake --snakefile Snakefile-bin --profile resources/profiles/demon rename_ma
 ```
 
 The `rename_mags` rule clears `renamed_mags/` before copying so stale files from previous runs don't accumulate.
+
+In the copies, every contig is renamed `<MAG_ID>__<original name>` (e.g. `MAG_0001__k141_123`). Assemblers reuse contig names in every sample, so without this two MAGs could share contig names, which breaks pooling MAGs into one reference (a dRep catalog, or read mapping against it). `MAG_ID` is used rather than `New_Name` because it is unique and does not change when `New_Name` is edited. `renamed_mags/contig_map.tsv` lists each new name with its original name and source FASTA; the MAG FASTAs under `selected_bins/` are not changed.
 
 ---
 
