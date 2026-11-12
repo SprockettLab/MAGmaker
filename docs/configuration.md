@@ -282,7 +282,8 @@ params:
 
 geNomad classifies viral and plasmid contigs straight from the assemblies;
 CheckV then scores viral completeness / contamination. Per-sample, parallel to
-the MAG track, requested with the `virus_all` target. See
+the MAG track; the `virus_all` target, which `run_magmaker.sh` runs unless
+`--skip-virus` is given. See
 [Viral / plasmid track](viral.md).
 
 ### Reproducibility seed

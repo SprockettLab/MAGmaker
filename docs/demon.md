@@ -93,7 +93,7 @@ snakemake --profile resources/profiles/demon generate_binning_config
 snakemake --snakefile Snakefile-bin --profile resources/profiles/demon rename_mags \
   --config binning=output/config/auto_binning.txt
 
-# Optional — viral / plasmid track
+# Viral / plasmid track (run_magmaker.sh runs this too, unless --skip-virus)
 snakemake --snakefile Snakefile-bin --profile resources/profiles/demon virus_all \
   --config binning=output/config/auto_binning.txt
 ```
