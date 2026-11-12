@@ -10,11 +10,15 @@ output/
 │   ├── fastqc_pre_trim/ fastqc_post_trim/ fastqc_post_host/   per-(sample,run,read) FastQC reports
 │   ├── fastp/                            fastp JSON + HTML reports (single-end reports under fastp/se/)
 │   ├── host_filter/nonhost/              host-filtered FASTQ files (input to everything downstream)
+│   ├── host_filter_ont/                  long reads: nonhost/{sample}.ont.fastq.gz, host/ (BAM, IDs), {sample}.counts.tsv
 │   └── multiqc/multiqc.html             combined QC report
 │
 ├── assemble/
 │   ├── megahit/{sample}.contigs.fasta      MEGAHIT assemblies
 │   ├── metaspades/{sample}.contigs.fasta   metaSPAdes assemblies
+│   ├── flye/, myloasm/                     long-read assemblies (Platform ont samples): {sample}.draft.fasta,
+│   │                                       .polished.fasta, .contigs.fasta (lambda removed), .contig_info.tsv,
+│   │                                       .polish_changes.tsv, .control_strand.tsv
 │   └── multiqc_assemble/multiqc.html       assembly QC report (QUAST stats)
 │
 ├── prototype_selection/

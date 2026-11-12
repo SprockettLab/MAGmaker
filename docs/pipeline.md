@@ -17,8 +17,10 @@ stages cannot disagree about it. The bridge between them is
 
 ### 1. Input
 
-One tab-separated `metadata.txt`: `Sample`, `Sequencing_Run`, `R1_fp`,
-`R2_fp`, and any covariate columns you add (carried through untouched). A run
+One tab-separated `metadata.txt`: `Sample`, `Sequencing_Run`, `Platform`
+(`illumina` or `ont`), `R1_fp`, `R2_fp`, and any covariate columns you add
+(carried through untouched). Nanopore runs are extra `ont` rows of a sample
+(see configuration.md, Long-read runs). A run
 is single-end when `R2_fp` is the literal `NA` — nothing is inferred. Plus a
 host genome FASTA for read removal.
 
