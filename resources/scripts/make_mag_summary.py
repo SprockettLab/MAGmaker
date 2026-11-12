@@ -16,6 +16,12 @@ checkm2_base = snakemake.params.checkm2_base
 gunc_base = snakemake.params.gunc_base
 cmseq_base = snakemake.params.cmseq_base
 assemblers = snakemake.params.assemblers
+# Binning row -> the sample its contigs came from, and the assembler that made
+# them, from the binning table. A long-read row (<sample>__flye) is not itself
+# a sample. Absent (older callers): the row is the sample, and the assembler
+# is found from which contigs file exists, as before.
+row_sample = dict(getattr(snakemake.params, 'row_sample', {}) or {})
+row_assembler = dict(getattr(snakemake.params, 'row_assembler', {}) or {})
 # 'das_tool' or 'binette', and the directory that tool's selected bins are
 # in. Defaulted so an older config that predates the switch still works.
 consolidation_tool = getattr(snakemake.params, 'consolidation_tool', 'das_tool')
@@ -450,7 +456,7 @@ for mapper in mappers:
         cmseq_map = load_cmseq(os.path.join(cmseq_base, mapper, sample))
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
         gunc_map = load_gunc(os.path.join(gunc_base, mapper, sample))
-        assembler = get_assembler(sample, assemblers)
+        assembler = row_assembler.get(sample) or get_assembler(sample, assemblers)
 
         n_before = len(all_mags)
         missing_tax = []
@@ -490,7 +496,7 @@ for mapper in mappers:
             all_mags.append({
                 'original_name': bin_name,
                 'original_path': fa,
-                'sample_id': sample,
+                'sample_id': row_sample.get(sample, sample),
                 'assembler': assembler,
                 'winning_binner': binner,
                 'tax_dict': tax_dict,
@@ -604,8 +610,8 @@ for entry in sorted(samples_without_mags, key=lambda e: (e['sample'], e['mapper'
     row = dict.fromkeys(SUMMARY_COLUMNS, 'NA')
     row['MAG_ID'] = 'NONE'
     row['New_Name'] = 'NONE'
-    row['Sample_ID'] = entry['sample']
-    row['Assembler'] = get_assembler(entry['sample'], assemblers)
+    row['Sample_ID'] = row_sample.get(entry['sample'], entry['sample'])
+    row['Assembler'] = row_assembler.get(entry['sample']) or get_assembler(entry['sample'], assemblers)
     row['Notes'] = entry['note']
     rows.append(row)
 

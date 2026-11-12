@@ -453,14 +453,32 @@ def binner_of_table(path):
         return 'unknown'
 
 
+# Long-read assemblers (long_reads.smk); their binning rows also get the
+# circular-contig candidate set.
+LONG_READ_ASSEMBLER_NAMES = ("flye", "myloasm")
+
+
+def is_long_read_row(row):
+    """Overridden in Snakefile-bin, which knows the binning table."""
+    return False
+
+
 def binner_tables(wildcards):
-    """Every enabled binner's contig-to-bin table for one sample."""
-    return expand(
+    """Every enabled binner's contig-to-bin table for one binning row, plus,
+    for a long-read row, the circular-contig candidates (one bin per closed
+    contig; long_read_binning.smk)."""
+    tables = expand(
         "output/selected_bins/{binner}/{mapper}/scaffolds2bin/"
         "{contig_sample}_scaffolds2bin.tsv",
         binner=enabled_binners(),
         mapper=config['mappers'],
         contig_sample=wildcards.contig_sample)
+    if is_long_read_row(wildcards.contig_sample):
+        tables += expand(
+            "output/selected_bins/circular/{mapper}/scaffolds2bin/"
+            "{contig_sample}_scaffolds2bin.tsv",
+            mapper=config['mappers'], contig_sample=wildcards.contig_sample)
+    return tables
 
 
 # Where each binner leaves its bins. CONCOCT's differs because its clusters

@@ -64,7 +64,9 @@ rule cmseq_map:
     """Map a sample's own host-filtered reads against its own MAGs."""
     input:
         ref="output/mag_qc/cmseq/{mapper}/{contig_sample}/mags.fa",
-        reads=lambda wildcards: nonhost_reads(wildcards.contig_sample)
+        # The reads of the sample the row was assembled from (a long-read
+        # row <sample>__<assembler> is not itself a sample).
+        reads=lambda wildcards: nonhost_reads(sample_of(wildcards.contig_sample))
     output:
         bam=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/reads.bam"),
         bai=temp("output/mag_qc/cmseq/{mapper}/{contig_sample}/reads.bam.bai")

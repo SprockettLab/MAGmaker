@@ -1,17 +1,24 @@
 
+def long_read_bam(row):
+    """A long-read row's own long reads mapped to it (long_read_binning.smk):
+    one more coverage column, beside the prototype short reads. [] for a
+    short-read row, whose BAM list is unchanged."""
+    return ["output/mapping/long_reads/{0}.bam".format(row)] if is_long_read_row(row) else []
+
+
 def get_bam_list(sample, mapper, contig_pairings):
     fps = expand("output/mapping/{mapper}/sorted_bams/{contig_pairings}_Mapped_To_{sample}.bam",
     mapper = mapper,
     sample = sample,
     contig_pairings = contig_pairings[sample])
-    return(fps)
+    return(fps + long_read_bam(sample))
 
 def get_index_list(sample, mapper, contig_pairings):
     fps = expand("output/mapping/{mapper}/sorted_bams/{contig_pairings}_Mapped_To_{sample}.bam.bai",
     mapper = mapper,
     sample = sample,
     contig_pairings = contig_pairings[sample])
-    return(fps)
+    return(fps + [b + ".bai" for b in long_read_bam(sample)])
 
 rule make_metabat2_coverage_table:
     """
@@ -45,9 +52,7 @@ rule run_metabat2:
     MetaBAT2 uses nucleotide composition information and source strain abundance (measured by depth-of-coverage by aligning the reads to the contigs) to perform binning.
     """
     input:
-        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                assembler = config['assemblers'],
-                contig_sample = wildcards.contig_sample),
+        contigs = lambda wildcards: row_contigs(wildcards.contig_sample),
         coverage_table = lambda wildcards: expand("output/binning/metabat2/{mapper}/coverage_tables/{contig_sample}_coverage_table.txt",
                 mapper=config['mappers'],
                 contig_sample=wildcards.contig_sample)
@@ -156,6 +161,9 @@ rule make_maxbin2_abund_list:
                 mapper = wildcards.mapper,
                 contig_sample = wildcards.contig_sample,
                 read_sample = contig_pairings[wildcards.contig_sample])
+            # A long-read row's own long-read coverage (long_read_binning.smk).
+            + (["output/binning/maxbin2/long_read_coverage/{0}_coverage.txt".format(wildcards.contig_sample)]
+               if is_long_read_row(wildcards.contig_sample) else [])
     output:
         abund_list = "output/binning/maxbin2/{mapper}/abundance_lists/{contig_sample}_abund_list.txt"
     benchmark:
@@ -174,9 +182,7 @@ rule run_maxbin2:
     MaxBin2 clusters metagenomic contigs (assembled contiguous genome fragments) into different "bins", each of which corresponds to a putative population genome. It uses nucleotide composition information, source strain abundance (measured by depth-of-coverage by aligning the reads to the contigs), and phylogenetic marker genes to perform binning through an Expectation-Maximization (EM) algorithm.
     """
     input:
-        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                assembler = config['assemblers'],
-                contig_sample = wildcards.contig_sample),
+        contigs = lambda wildcards: row_contigs(wildcards.contig_sample),
         abund_list = lambda wildcards: expand("output/binning/maxbin2/{mapper}/abundance_lists/{contig_sample}_abund_list.txt",
                 mapper=config['mappers'],
                 contig_sample=wildcards.contig_sample)
@@ -280,9 +286,7 @@ rule cut_up_fasta:
     of the original contigs. This can be used as input to concoct_coverage_table.py.
     """
     input:
-        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                assembler = config['assemblers'],
-                contig_sample = wildcards.contig_sample)
+        contigs = lambda wildcards: row_contigs(wildcards.contig_sample)
     output:
         bed="output/binning/concoct/{mapper}/contigs_10K/{contig_sample}.bed",
         contigs_10K="output/binning/concoct/{mapper}/contigs_10K/{contig_sample}.fa"
@@ -470,9 +474,7 @@ rule extract_fasta_bins:
     Extracts bins as individual FASTA.
     """
     input:
-        original_contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                    assembler = config['assemblers'],
-                    contig_sample = wildcards.contig_sample),
+        original_contigs = lambda wildcards: row_contigs(wildcards.contig_sample),
         clustering_merged = rules.merge_cutup_clustering.output.merged
     output:
         fasta_bins = directory("output/binning/concoct/{mapper}/extract_fasta_bins/{contig_sample}_bins/")
@@ -523,9 +525,7 @@ rule run_semibin2:
     output_recluster_bins or output_prerecluster_bins was written.
     """
     input:
-        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                assembler = config['assemblers'],
-                contig_sample = wildcards.contig_sample),
+        contigs = lambda wildcards: row_contigs(wildcards.contig_sample),
         bams = lambda wildcards: get_bam_list(wildcards.contig_sample, wildcards.mapper, contig_pairings),
         bais = lambda wildcards: get_index_list(wildcards.contig_sample, wildcards.mapper, contig_pairings)
     output:
@@ -537,7 +537,11 @@ rule run_semibin2:
         engine = config['params'].get('semibin2', {}).get('engine', 'cpu'),
         environment = config['params'].get('semibin2', {}).get('environment', ''),
         min_len = config['params'].get('semibin2', {}).get('min_contig_length', 1000),
-        extra = config['params'].get('semibin2', {}).get('extra', '')
+        extra = config['params'].get('semibin2', {}).get('extra', ''),
+        # Long-read assemblies are binned in SemiBin2's long-read mode, as
+        # ont_bin.sh did in WF18; short-read rows keep its default.
+        sequencing_type = lambda wildcards: (
+            "--sequencing-type long_read" if is_long_read_row(wildcards.contig_sample) else "")
     threads:
         config['threads'].get('run_semibin2', 16)
     resources:
@@ -620,7 +624,7 @@ rule run_semibin2:
                 --threads {threads} \
                 --min-len {params.min_len} \
                 --random-seed {params.seed} \
-                --engine {params.engine} \
+                --engine {params.engine} {params.sequencing_type} \
                 ${{MODEL}} {params.extra} \
                 2> {log} 1>&2; then
                 if grep -qE "no must-link pairs can be generated|contain\(s\) at least [0-9]+ basepairs|all are shorter than [0-9]+ basepairs|Input file .* is empty" {log}; then

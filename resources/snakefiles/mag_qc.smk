@@ -496,6 +496,8 @@ rule make_mag_summary:
         mappers=config['mappers'],
         contig_samples=list(contig_pairings.keys()),
         assemblers=config['assemblers'],
+        row_sample={r: sample_of(r) for r in contig_pairings},
+        row_assembler={r: assembler_of(r) for r in contig_pairings},
         consolidation_tool=consolidation_tool(),
         selected_fastas=SELECTED_FASTAS
     retries:
