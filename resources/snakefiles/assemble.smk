@@ -147,7 +147,7 @@ rule quast:
     log:
         "output/logs/assemble/{assembler}/quast/{sample}.log"
     conda:
-        "../env/assemble.yaml"
+        "../env/quast.yaml"
     benchmark:
         "output/benchmarks/assemble/{assembler}/quast/{sample}_benchmark.txt"
     shell:
@@ -161,18 +161,20 @@ rule quast:
         # exact second), taking the whole arm down with them despite this
         # rule clearly never being meant to be fatal.
         #
-        # `|| true` restores that intent. Also adds the log redirect the
-        # rule was missing entirely -- `log:` was declared but nothing
-        # ever wrote to it, so a real quast failure only ever showed up
-        # in the SLURM-captured job output, not the log path anyone would
-        # actually check.
+        # A failed quast run still does not stop the pipeline, but it is no
+        # longer silent: report.txt then says QUAST failed and points at the
+        # log, instead of being an empty file. Before 2026-11-12 the failure
+        # left an empty report.txt; quast had been failing on every sample
+        # (Python 3.13 has no distutils) and the only sign was MultiQC
+        # finding no results. The log redirect was added earlier for the
+        # same reason: `log:` was declared but nothing wrote to it.
         """
-        quast.py \
-          -o {params.outdir} \
-          -t {threads} \
-          {input} \
-          2> {log} 1>&2 || true
-          touch {output.report}
+        if quast.py -o {params.outdir} -t {threads} {input} > {log} 2>&1; then
+            [ -s {output.report} ] || echo "QUAST exited 0 but wrote no report; see {log}" > {output.report}
+        else
+            echo "QUAST failed for {wildcards.sample} ({wildcards.assembler}); see {log}" > {output.report}
+            echo "QUAST failed; report.txt marks it" >> {log}
+        fi
         """
 
 rule multiqc_assemble:
@@ -209,7 +211,7 @@ rule metaquast:
         refs=config['params']['metaquast']['reference_dir'],
         extra=config['params']['metaquast']['extra']
     conda:
-        "../env/assemble.yaml"
+        "../env/quast.yaml"
     benchmark:
         "output/benchmarks/assemble/{assembler}/metaquast/{sample}_benchmark.txt"
     shell:

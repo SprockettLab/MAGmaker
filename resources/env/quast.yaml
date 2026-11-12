@@ -1,0 +1,13 @@
+# QUAST in its own environment, on Python below 3.12. quast 5.3.0 imports
+# distutils (quast_libs/qconfig.py), which Python 3.12 removed; in the shared
+# assembly environment the solver picked Python 3.13 and every quast run died
+# on import with "No module named 'distutils'".
+# Kept apart from assemble.yaml so that fixing QUAST does not change the
+# environment MEGAHIT and metaSPAdes run in (which would rerun every assembly).
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python>=3.9,<3.12
+  - quast>=5.3.0

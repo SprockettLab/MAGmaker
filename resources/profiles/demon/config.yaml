@@ -88,8 +88,11 @@ set-resources:
     mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
                         # input-scaled floor; this overrides it. defq nodes
                         # are ~755 GB, so 256 GB still fits 3 jobs per node.
-  metaphlan:
-    mem_mb: 32000
+  # metaphlan: no entry. A set-resources mem_mb replaces the rule's
+  # mem_escalate, so every retry asked for the same 32 GB; on the WF18 vervet
+  # run (2026-11-12) MetaPhlAn jobs ran out of memory at ~32.5 GB on retry
+  # after retry, and v2528_Mother_Day7 failed all three. The rule starts at
+  # config mem_mb.metaphlan (32000) and doubles per retry.
   taxonomy_kraken:
     mem_mb: 220000
   # Memory for these two comes from config['mem_mb'] (read by the rules),
