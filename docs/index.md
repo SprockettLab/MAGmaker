@@ -5,7 +5,9 @@ sequencing data (paired-end or single-end). MAGmaker takes raw FASTQ files
 through quality control, host read removal, assembly, and taxonomic profiling,
 then — in a second stage — through mapping, binning, bin consolidation, and MAG
 QC to produce metagenome-assembled genomes (MAGs). An optional viral / plasmid
-discovery track (geNomad + CheckV) runs alongside the MAG track.
+discovery track (geNomad, with VIBRANT, Cenote-Taker3 and VirSorter2 behind
+switches; CheckV per predictor; vRhyme viral binning) runs alongside the MAG
+track.
 
 Developed by the [Moeller Lab](https://moellerlab.com) at Cornell University
 and Princeton University, and maintained by the
@@ -46,7 +48,7 @@ environments are pre-configured.
 | [Database setup](databases.md) | CheckM2, GUNC, GTDB-Tk, MetaPhlAn, Kraken2, geNomad, CheckV, host genome |
 | [Running the pipeline](running.md) | Local, HPC/SLURM, `run_magmaker.sh`, per-run flags, stage-by-stage |
 | [Output](output.md) | Directory layout, MAG summary table, renaming workflow, GTDB-Tk stages |
-| [Viral / plasmid track](viral.md) | geNomad + CheckV, `virus_summary.tsv` |
+| [Viral / plasmid track](viral.md) | viral predictors, CheckV, vRhyme; `virus_summary.tsv` |
 | [Running on DEMON (WFUSM)](demon.md) | DEMON cluster setup, pre-configured databases and environments |
 
 ---

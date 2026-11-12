@@ -281,9 +281,14 @@ params:
 ```
 
 geNomad classifies viral and plasmid contigs straight from the assemblies;
-CheckV then scores viral completeness / contamination. Per-sample, parallel to
-the MAG track; the `virus_all` target, which `run_magmaker.sh` runs unless
-`--skip-virus` is given. See
+CheckV then scores each predictor's own calls; vRhyme bins geNomad's viral
+contigs into vMAGs. Which tools run is one switch each under `virus:`
+(geNomad and vRhyme on, the other three predictors off). VIBRANT,
+Cenote-Taker3, VirSorter2 and vRhyme run in environments named by
+`params.<tool>.env` rather than from a conda yaml, because their dependencies
+cannot be re-solved safely. Per-sample, parallel to the MAG track; the
+`virus_all` target, which `run_magmaker.sh` runs unless `--skip-virus` is
+given. See
 [Viral / plasmid track](viral.md).
 
 ### Reproducibility seed

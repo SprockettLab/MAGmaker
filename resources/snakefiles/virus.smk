@@ -29,6 +29,115 @@ def contigs_stem(row):
     return sample_of(row) + ".contigs"
 
 
+# ── Which tools run ──────────────────────────────────────────────────────────
+#
+# config['virus'] has one switch per tool. Per run, --config
+# virus_predictors=[genomad,vibrant] replaces the predictor switches and
+# skip_vrhyme=True turns vRhyme off (run_magmaker.sh: --virus-predictors=...,
+# --skip-vrhyme).
+
+VIRUS_PREDICTORS = ['genomad', 'vibrant', 'cenotetaker3', 'virsorter2']
+OTHER_PREDICTORS = ['vibrant', 'cenotetaker3', 'virsorter2']
+VIRUS_DEFAULTS = {'genomad': True, 'vrhyme': True, 'vibrant': False,
+                  'cenotetaker3': False, 'virsorter2': False}
+
+
+def _virus_switches():
+    switches = dict(VIRUS_DEFAULTS)
+    switches.update(config.get('virus') or {})
+    unknown = sorted(set(switches) - set(VIRUS_DEFAULTS))
+    if unknown:
+        raise ValueError(f"config virus: unknown switch(es) {unknown}; "
+                         f"known: {sorted(VIRUS_DEFAULTS)}")
+    chosen = config.get('virus_predictors')
+    if chosen is not None:
+        if isinstance(chosen, str):
+            chosen = [c for c in chosen.replace(',', ' ').split() if c]
+        bad = sorted(set(chosen) - set(VIRUS_PREDICTORS))
+        if bad:
+            raise ValueError(f"virus_predictors: unknown predictor(s) {bad}; "
+                             f"known: {VIRUS_PREDICTORS}")
+        for tool in VIRUS_PREDICTORS:
+            switches[tool] = tool in chosen
+    if config.get('skip_vrhyme'):
+        switches['vrhyme'] = False
+    return switches
+
+
+VIRUS_ON = _virus_switches()
+PREDICTORS_ON = [t for t in VIRUS_PREDICTORS if VIRUS_ON[t]]
+
+
+def vrhyme_mapper():
+    return (config['params'].get('vrhyme', {}).get('mapper') or config['mappers'][0])
+
+
+def _vrhyme_runs():
+    """vRhyme bins geNomad's calls with MetaBAT2's coverage table, so it needs
+    both. Said once at parse time when it cannot run, rather than failing a
+    run whose other parts are fine."""
+    if not VIRUS_ON['vrhyme']:
+        return False
+    missing = []
+    if not VIRUS_ON['genomad']:
+        missing.append("geNomad is off (vRhyme bins geNomad's viral contigs)")
+    if 'metabat2' not in config.get('binners', []):
+        missing.append("metabat2 is not among the binners (vRhyme uses its "
+                       "coverage table; without it the reads would be mapped again)")
+    if missing:
+        print("MAGmaker viral track: vRhyme is on but will NOT run: "
+              + "; ".join(missing), file=sys.stderr)
+        return False
+    return True
+
+
+VRHYME_RUNS = _vrhyme_runs()
+if VIRUS_ON:
+    print("MAGmaker viral track: predictors " + (", ".join(PREDICTORS_ON) or "none")
+          + "; vRhyme " + ("on" if VRHYME_RUNS else "off"), file=sys.stderr)
+
+
+def vrhyme_pairs():
+    """vRhyme needs the coverage table of the contigs it bins, which exists only
+    for a row's own assembler (the binning table's Contigs column)."""
+    if not VRHYME_RUNS:
+        return []
+    return [(a, r) for a, r in virus_pairs() if a == assembler_of(r)]
+
+
+def predictor_fasta(predictor, assembler, row):
+    """Each predictor's viral sequences, the file CheckV reads."""
+    stem = contigs_stem(row)
+    base = f"output/virus/{predictor}/{assembler}/{row}"
+    if predictor == 'genomad':
+        return f"{base}/{stem}_summary/{stem}_virus.fna"
+    if predictor == 'vibrant':
+        return f"{base}/VIBRANT_{stem}/VIBRANT_phages_{stem}/{stem}.phages_combined.fna"
+    if predictor == 'cenotetaker3':
+        # -r ct3: Cenote-Taker3 names its run folder and files after it.
+        return f"{base}/ct3/ct3_virus_sequences.fna"
+    if predictor == 'virsorter2':
+        return f"{base}/final-viral-combined.fa"
+    raise ValueError(predictor)
+
+
+def checkv_dir(predictor, assembler, row):
+    """geNomad's CheckV keeps the path it always had, so runs that already
+    have it rerun nothing; the other predictors' CheckV sits beside it."""
+    if predictor == 'genomad':
+        return f"output/virus/checkv/{assembler}/{row}"
+    return f"output/virus/checkv_{predictor}/{assembler}/{row}"
+
+
+def tool_env(tool):
+    """An existing environment folder named in params.<tool>.env."""
+    env = config['params'].get(tool, {}).get('env')
+    if not env:
+        raise ValueError(f"params.{tool}.env is not set; it must name the "
+                         f"environment folder {tool} runs in (docs/viral.md)")
+    return env
+
+
 rule run_genomad:
     """
     geNomad end-to-end: identify viral + plasmid contigs and classify them.
@@ -41,7 +150,12 @@ rule run_genomad:
     params:
         outdir = "output/virus/genomad/{assembler}/{contig_sample}",
         db = config['params']['genomad']['db_path'],
-        extra = config['params']['genomad']['extra']
+        extra = config['params']['genomad']['extra'],
+        # geNomad reports FDR only when scores are calibrated, and that also
+        # turns on its --max-fdr filter. See params.genomad.score_calibration.
+        calibration = ('--enable-score-calibration'
+                       if config['params']['genomad'].get('score_calibration', True)
+                       else '')
     threads:
         config['threads']['genomad']
     retries:
@@ -81,7 +195,7 @@ rule run_genomad:
         """
             rm -rf {params.outdir}
             mkdir -p {params.outdir}
-            genomad end-to-end --threads {threads} {params.extra} \
+            genomad end-to-end --threads {threads} {params.calibration} {params.extra} \
                 {input.contigs} {params.outdir} {params.db} \
                 2> {log} 1>&2
             rm -rf {params.outdir}/*_annotate \
@@ -90,6 +204,16 @@ rule run_genomad:
                    {params.outdir}/*_marker_classification \
                    {params.outdir}/*_nn_classification \
                    2> /dev/null || true
+            {{
+              echo "tool	geNomad"
+              echo "version	$(genomad --version 2>&1 | tail -n 1)"
+              echo "database	{params.db}"
+              echo "score_calibration_flag	{params.calibration}"
+              echo "extra	{params.extra}"
+              echo "threads	{threads}"
+              echo "input	{input.contigs}"
+              echo "input_contigs	$(grep -c '^>' {input.contigs} || true)"
+            }} > {params.outdir}/params.txt
         """
 
 
@@ -151,25 +275,51 @@ rule run_checkv:
         """
 
 
+include: "virus_predictors.smk"
+include: "vrhyme.smk"
+
+
+def predictor_targets():
+    """Every switched-on predictor's .done, plus its own CheckV's."""
+    targets = []
+    for predictor in PREDICTORS_ON:
+        for assembler, row in virus_pairs():
+            targets.append("output/virus/{0}/{1}/{2}/.done".format(
+                predictor, assembler, row))
+            targets.append(checkv_dir(predictor, assembler, row) + "/.done")
+    return targets
+
+
 rule make_virus_summary:
     """
-    Merge per-sample geNomad (virus + plasmid) and CheckV outputs into one table.
+    Merge every predictor's calls, with its own CheckV's grades, into one table.
+
+    One row per call per predictor, carrying Predictor and Source_Contig, so
+    nothing downstream has to parse a tool's own naming. Backward compatible:
+    with only geNomad on, the rows are the same as before plus those columns.
     """
     input:
-        genomad = lambda wildcards: ["output/virus/genomad/{0}/{1}/.done".format(a, r)
-                                     for a, r in virus_pairs()],
-        checkv = lambda wildcards: ["output/virus/checkv/{0}/{1}/.done".format(a, r)
-                                    for a, r in virus_pairs()]
+        genomad = lambda wildcards: (
+            ["output/virus/genomad/{0}/{1}/.done".format(a, r)
+             for a, r in virus_pairs()] if VIRUS_ON['genomad'] else []),
+        checkv = lambda wildcards: (
+            ["output/virus/checkv/{0}/{1}/.done".format(a, r)
+             for a, r in virus_pairs()] if VIRUS_ON['genomad'] else []),
+        predictors = lambda wildcards: predictor_targets()
     output:
-        summary = "output/virus/virus_summary.tsv"
+        summary = "output/virus/virus_summary.tsv",
+        mapping = "output/virus/virus_name_mapping.tsv"
     params:
         contig_samples = list(contig_pairings.keys()),
         assemblers = config['assemblers'],
         pairs = virus_pairs(),
+        predictors = [p for p in PREDICTORS_ON],
         row_sample = {r: sample_of(r) for r in contig_pairings},
+        row_stem = {r: contigs_stem(r) for r in contig_pairings},
         long_read_rows = [r for r in contig_pairings if is_long_read_row(r)],
         genomad_base = "output/virus/genomad",
-        checkv_base = "output/virus/checkv"
+        checkv_base = "output/virus/checkv",
+        virus_base = "output/virus"
     conda:
         "../env/mag_qc.yaml"
     log:
@@ -180,4 +330,5 @@ rule make_virus_summary:
 
 rule virus_all:
     input:
-        "output/virus/virus_summary.tsv"
+        "output/virus/virus_summary.tsv",
+        (["output/virus/vrhyme_summary.tsv"] if VRHYME_RUNS else [])

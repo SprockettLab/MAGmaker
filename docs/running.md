@@ -12,7 +12,7 @@ MAGmaker runs in up to three stages. The `run_magmaker.sh` wrapper chains all th
 | 2 — Binning config | `snakemake generate_binning_config` | `output/config/auto_binning.txt` |
 | 3 — Binning pipeline | `snakemake --snakefile Snakefile-bin` | MAGs, QC reports, taxonomy, strain heterogeneity, `mag_summary.tsv` |
 
-Stage 3 also runs the viral / plasmid track (geNomad + CheckV), the
+Stage 3 also runs the viral / plasmid track (viral predictors, CheckV, vRhyme), the
 `virus_all` target, unless `--skip-virus` is given — see below and
 [Viral / plasmid track](viral.md).
 
@@ -54,7 +54,9 @@ for one run, without editing a tracked file:
 |---|---|
 | `--skip-kraken` | drop the Kraken2 / Bracken targets for this run |
 | `--skip-metaphlan` | drop the MetaPhlAn target for this run |
-| `--skip-virus` | leave the viral / plasmid track (`virus_all`: geNomad, CheckV) out of Stage 3 |
+| `--skip-virus` | leave the viral / plasmid track (`virus_all`) out of Stage 3 |
+| `--virus-predictors=genomad,vibrant` | which viral predictors run, overriding the `virus:` switches |
+| `--skip-vrhyme` | no viral binning; the predictors still run |
 | `--skip-cmseq` | skip CMSeq strain heterogeneity; the two SH columns in `mag_summary.tsv` become `NA` |
 | `--binette` / `--das-tool` | choose the bin consolidation tool, overriding `params.consolidation.tool` |
 | `--skip-gtdbtk-classify` | run GTDB-Tk `identify` + `align` only — `MSA_Percent` is populated, taxonomy columns are `NA`, pplacer never runs (32–64 GB instead of 128–320 GB) |
@@ -84,10 +86,13 @@ snakemake --snakefile Snakefile-bin --profile resources/profiles/demon virus_all
   --config binning=output/config/auto_binning.txt
 ```
 
-This runs geNomad (viral + plasmid contig classification, straight from the
-assemblies — no mapping needed) and CheckV (viral completeness / contamination),
-and writes `output/virus/virus_summary.tsv`. It reads only the assemblies, so
-it can run alongside the MAG track. See [Viral / plasmid track](viral.md).
+This runs the viral predictors that are switched on (geNomad by default;
+VIBRANT, Cenote-Taker3 and VirSorter2 available), CheckV on each one's own
+calls, and vRhyme to bin geNomad's viral contigs into vMAGs. It writes
+`output/virus/virus_summary.tsv` plus the name-mapping and vRhyme tables.
+It reads only the assemblies and the coverage table the MAG track already
+wrote, so it can run alongside the MAG track. See
+[Viral / plasmid track](viral.md).
 
 ---
 
@@ -229,7 +234,7 @@ SLURM job logs go to `.snakemake/slurm_logs/{rule}/`. Rule-level logs (tool stde
 | `select_bins` | Bin consolidation — Binette or DAS_Tool (requires binning) |
 | `make_mag_summary` | CheckM2 + GUNC + GTDB-Tk + CMSeq + combined summary table |
 | `rename_mags` | Copy MAGs to `renamed_mags/` using names from `mag_summary.tsv` |
-| `virus_all` | geNomad + CheckV → `virus_summary.tsv` (independent of the MAG track) |
+| `virus_all` | viral predictors + CheckV + vRhyme → `virus_summary.tsv` (independent of the MAG track) |
 
 ---
 

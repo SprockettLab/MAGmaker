@@ -77,6 +77,12 @@ def test_wrapper_targets():
     assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all'], calls[2]
     assert 'virus_all' not in calls[0] and 'virus_all' not in calls[1]
 
+    # The viral predictor flags become config overrides, not targets.
+    calls = wrapper_calls('--virus-predictors=genomad,vibrant', '--skip-vrhyme')
+    assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all'], calls[2]
+    assert 'virus_predictors=[genomad,vibrant]' in calls[2], calls[2]
+    assert 'skip_vrhyme=True' in calls[2], calls[2]
+
     calls = wrapper_calls('--skip-virus', '--skip-cmseq')
     assert stage3_targets(calls[2]) == ['rename_mags'], calls[2]
     # --skip-virus is consumed by the wrapper, never passed to Snakemake,
@@ -123,10 +129,14 @@ def test_plan():
     assert both.get('rename_mags') == 1, both
     mags_only = planned('rename_mags')
     assert 'run_genomad' not in mags_only and 'run_checkv' not in mags_only, mags_only
-    # The viral track adds its own jobs and nothing else.
+    # The viral track adds its own jobs and nothing else. vRhyme is in that
+    # set because it is on by default; it bins geNomad's calls with the
+    # coverage table the MAG track already writes, so it adds no mapping.
     extra = {k: both[k] - mags_only.get(k, 0) for k in both if both[k] != mags_only.get(k, 0)}
-    assert set(extra) == {'run_genomad', 'run_checkv', 'make_virus_summary', 'virus_all',
-                          'total'}, extra
+    assert set(extra) == {'run_genomad', 'run_checkv', 'make_virus_summary',
+                          'vrhyme_prep', 'run_vrhyme', 'vrhyme_summary',
+                          'virus_all', 'total'}, extra
+    assert both.get('vrhyme_prep') == n and both.get('run_vrhyme') == n, both
     return both, mags_only
 
 

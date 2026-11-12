@@ -2,7 +2,9 @@
 
 MAGmaker needs several reference databases. Only the ones for the stages you
 run are required: read-level profiling needs MetaPhlAn and/or Kraken2, MAG QC
-needs CheckM2 + GUNC + GTDB-Tk, and the viral track needs geNomad + CheckV.
+needs CheckM2 + GUNC + GTDB-Tk, and the viral track needs geNomad + CheckV
+(plus a database each for any of VIBRANT, Cenote-Taker3 and VirSorter2 that is
+switched on; see [Viral / plasmid track](viral.md)).
 
 | Database | For | Size (approx.) | `config.yaml` key |
 |---|---|---|---|

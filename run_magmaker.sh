@@ -29,7 +29,11 @@
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --skip-vsc                              # no viral cluster profiling
 #   ./run_magmaker.sh --profile resources/profiles/demon \
-#       --skip-virus                            # no geNomad / CheckV track
+#       --skip-virus                            # no viral / plasmid track
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --virus-predictors=genomad,vibrant      # which predictors run
+#   ./run_magmaker.sh --profile resources/profiles/demon \
+#       --skip-vrhyme                           # no viral binning
 #   ./run_magmaker.sh --profile resources/profiles/demon \
 #       --binette                               # Binette instead of DAS_Tool
 #   ./run_magmaker.sh --profile resources/profiles/demon \
@@ -80,6 +84,12 @@ for arg in "$@"; do
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
         --skip-vsc)       SKIP_CONFIG+=("skip_vsc=True") ;;
         --skip-virus)     STAGE3_TARGETS=(rename_mags) ;;
+        # Which viral predictors run, overriding the `virus:` switches for
+        # this run only, and whether vRhyme bins geNomad's calls. Written
+        # with = for the same reason as --binners: the argument loop stays a
+        # single pass. See docs/viral.md.
+        --virus-predictors=*) SKIP_CONFIG+=("virus_predictors=[${arg#*=}]") ;;
+        --skip-vrhyme)    SKIP_CONFIG+=("skip_vrhyme=True") ;;
         # --------------------------------------------------------------
         # Everything collected here becomes ONE --config on each snakemake
         # command line. Snakemake's --config takes nargs="*" with argparse's
