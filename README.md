@@ -28,7 +28,7 @@ BAMs + contigs → MetaBAT2 + MaxBin2 + CONCOCT + SemiBin2
               → Binette (default) or DAS_Tool → one MAG set per sample
 MAGs → CheckM2 + GUNC + GTDB-Tk + CMSeq → mag_summary.tsv → renamed_mags/
 
-Viral / plasmid track (opt-in, `virus_all` target):
+Viral / plasmid track (`virus_all` target, run by default):
 contigs → geNomad → CheckV → virus_summary.tsv
 ```
 
@@ -57,9 +57,10 @@ conda activate snakemake
 ./run_magmaker.sh --profile resources/profiles/your_cluster
 ```
 
-`run_magmaker.sh` runs Stage 1 and Stage 2 through MAG renaming. Read-level
-profiling (MetaPhlAn, Kraken2) is toggled by the `biobakery` / `profilers`
-config lists or per-run flags, and the viral track is opt-in — see
+`run_magmaker.sh` runs Stage 1 and Stage 2 through MAG renaming and the viral
+/ plasmid track. Read-level profiling (MetaPhlAn, Kraken2) is toggled by the
+`biobakery` / `profilers` config lists or per-run flags, and `--skip-virus`
+drops the viral track for one run — see
 [Running the pipeline](docs/running.md).
 
 > **WFUSM users on DEMON:** See [Running on DEMON](docs/demon.md) for a self-contained setup guide with all databases and environments pre-configured.

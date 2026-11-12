@@ -128,12 +128,12 @@ quality tier, with `NONE` rows recording samples that produced no MAG.
 `rename_mags` copies the FASTAs into `renamed_mags/` under the `New_Name`
 column, which you can edit and re-run.
 
-### 10. Viral / plasmid track (optional)
+### 10. Viral / plasmid track
 
 Branches off the assemblies: **geNomad** classifies viral and plasmid contigs
 (no mapping needed), **CheckV** scores the viral ones, and
-`make_virus_summary` writes `virus_summary.tsv`. Requested with the
-`virus_all` target. See [Viral / plasmid track](viral.md).
+`make_virus_summary` writes `virus_summary.tsv`. The `virus_all` target;
+`run_magmaker.sh` runs it in Stage 3 unless `--skip-virus` is given. See [Viral / plasmid track](viral.md).
 
 ---
 
