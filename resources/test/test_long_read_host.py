@@ -97,6 +97,18 @@ def main():
     check("index is one part (no split index)",
           'multi-part' not in open(os.path.join(tmp, 'output', 'logs', 'qc', 'host_filter_ont',
                                                 'host_minimap2_index.log')).read())
+
+    # Assembly is planned from the nonhost reads, once per long-read assembler.
+    drafts = ['output/assemble/flye/S.draft.fasta', 'output/assemble/myloasm/S.draft.fasta']
+    p = subprocess.run(['snakemake', '-s', os.path.join(REPO_ROOT, 'Snakefile'),
+                        '--configfile', os.path.join(REPO_ROOT, 'config.yaml'),
+                        os.path.join(tmp, 'over.yaml'), '--cores', '2', '-d', tmp, '-n', *drafts],
+                       capture_output=True, text=True)
+    out = p.stdout + p.stderr
+    stats = dict(l.split()[:2] for l in out.split('Job stats:')[-1].splitlines()[3:] if len(l.split()) == 2)
+    check("flye and myloasm planned once each, nothing else rerun",
+          p.returncode == 0 and stats.get('flye') == '1' and stats.get('myloasm') == '1'
+          and stats.get('total') == '2', out[-1500:])
     shutil.rmtree(tmp)
 
 

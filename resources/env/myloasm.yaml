@@ -1,0 +1,10 @@
+# myloasm for Nanopore long-read assemblies. Pinned exactly: rule myloasm reads
+# circularity, length and depth from its contig names, a format a later
+# release may change. Raise the pin after checking a new release's names.
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python>=3.10
+  - myloasm=0.7.0

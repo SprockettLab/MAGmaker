@@ -126,3 +126,112 @@ rule host_filter_ont:
         mv "$TMP/host_ids.txt.gz" {output.ids}
         mv "$TMP/counts.tsv" {output.counts}
         """
+
+
+# ---------------------------------------------------------------------------
+# Assembly: every assembler in long_read_assemblers, for every long-read sample.
+# Each writes output/assemble/<assembler>/<sample>.draft.fasta (contigs renamed
+# <sample>__<assembler>__<original>) and <sample>.contig_info.tsv (length,
+# circular, depth), kept beside the polished contigs. The assembler's own
+# folder is kept under <sample>_<assembler>/ while it runs, so a retry resumes.
+# ---------------------------------------------------------------------------
+
+LONG_READ_ASSEMBLERS = config.get("long_read_assemblers", []) or []
+_unknown_lr = [a for a in LONG_READ_ASSEMBLERS if a not in ("flye", "myloasm")]
+if _unknown_lr:
+    _fail("long_read_assemblers names unknown assembler(s): %s\n"
+          "Known: flye, myloasm." % ", ".join(_unknown_lr))
+if long_read_samples and not LONG_READ_ASSEMBLERS:
+    _fail("the metadata has long reads (Platform ont) but long_read_assemblers\n"
+          "is empty; list flye and/or myloasm.")
+
+
+rule flye:
+    """
+    metaFlye: flye --meta --nano-hq, defaults otherwise. A retry resumes the
+    same run (--resume) when Flye got far enough to write params.json.
+    """
+    input:
+        reads="output/qc/host_filter_ont/nonhost/{sample}.ont.fastq.gz"
+    output:
+        draft="output/assemble/flye/{sample}.draft.fasta",
+        info="output/assemble/flye/{sample}.contig_info.tsv",
+        report="output/assemble/flye/{sample}_flye/assembly_info.txt"
+    params:
+        workdir="output/assemble/flye/{sample}_flye/run",
+        script=os.path.join(LONG_READ_SCRIPTS, "long_read_contigs.py"),
+        extra=long_read_param("flye_extra", "")
+    conda:
+        "../env/flye.yaml"
+    threads:
+        config['threads'].get('flye', 64)
+    retries:
+        config['retries'].get('flye', 1)
+    resources:
+        mem_mb=mem_escalate('flye', base_default=500000),
+        runtime=runtime_escalate('flye', base_default=10080)
+    log:
+        "output/logs/assemble/flye/{sample}.log"
+    benchmark:
+        "output/benchmarks/assemble/flye/{sample}_benchmark.txt"
+    shell:
+        """
+        if [ -s {params.workdir}/params.json ] && [ ! -s {params.workdir}/assembly.fasta ]; then
+            flye --nano-hq {input.reads} --meta --threads {threads} --out-dir {params.workdir} \
+                 --resume {params.extra} > {log} 2>&1
+        elif [ ! -s {params.workdir}/assembly.fasta ]; then
+            rm -rf {params.workdir}
+            flye --nano-hq {input.reads} --meta --threads {threads} --out-dir {params.workdir} \
+                 {params.extra} > {log} 2>&1
+        fi
+        python {params.script} --sample {wildcards.sample} --assembler flye \
+            --assembly {params.workdir}/assembly.fasta --flye-info {params.workdir}/assembly_info.txt \
+            --out-fasta {output.draft}.partial --out-info {output.info}.partial
+        cp {params.workdir}/assembly_info.txt {params.workdir}/assembly_graph.gfa \
+           {params.workdir}/flye.log $(dirname {output.report})/
+        mv {output.draft}.partial {output.draft}
+        mv {output.info}.partial {output.info}
+        rm -rf {params.workdir}
+        """
+
+
+rule myloasm:
+    """
+    myloasm with default settings; its primary assembly (assembly_primary.fa).
+    Circular, length and depth come from its contig names; only circular-yes
+    counts as circular downstream.
+    """
+    input:
+        reads="output/qc/host_filter_ont/nonhost/{sample}.ont.fastq.gz"
+    output:
+        draft="output/assemble/myloasm/{sample}.draft.fasta",
+        info="output/assemble/myloasm/{sample}.contig_info.tsv"
+    params:
+        workdir="output/assemble/myloasm/{sample}_myloasm",
+        script=os.path.join(LONG_READ_SCRIPTS, "long_read_contigs.py"),
+        extra=long_read_param("myloasm_extra", "")
+    conda:
+        "../env/myloasm.yaml"
+    threads:
+        config['threads'].get('myloasm', 64)
+    retries:
+        config['retries'].get('myloasm', 1)
+    resources:
+        mem_mb=mem_escalate('myloasm', base_default=500000),
+        runtime=runtime_escalate('myloasm', base_default=10080)
+    log:
+        "output/logs/assemble/myloasm/{sample}.log"
+    benchmark:
+        "output/benchmarks/assemble/myloasm/{sample}_benchmark.txt"
+    shell:
+        """
+        if [ ! -s {params.workdir}/assembly_primary.fa ]; then
+            rm -rf {params.workdir}
+            myloasm {input.reads} -o {params.workdir} -t {threads} {params.extra} > {log} 2>&1
+        fi
+        python {params.script} --sample {wildcards.sample} --assembler myloasm \
+            --assembly {params.workdir}/assembly_primary.fa \
+            --out-fasta {output.draft}.partial --out-info {output.info}.partial
+        mv {output.draft}.partial {output.draft}
+        mv {output.info}.partial {output.info}
+        """
