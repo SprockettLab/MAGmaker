@@ -139,10 +139,60 @@ def test_missing_taxonomy_counts_only_unclassified_bins():
         assert 'for 1 of 2 bins (e.g. bin.1)' in warning, warning
 
 
+def test_long_read_row_columns():
+    # A long-read binning row (George__flye): its MAGs take Sample_ID and
+    # Assembler from the table, Circular_Contigs and Closed from the
+    # assembler's contig table, and the full MIMAG tier from rRNA and tRNA.
+    # The short-read row's MAG gets NA for the circularity columns.
+    with tempfile.TemporaryDirectory() as root:
+        stub = build_fixture(root, {'bin.1': CLASSIFIED})
+        row = 'George__flye'
+        lr_bins = os.path.join(root, 'selected_bins', MAPPER, SELECTED_FASTAS, row)
+        os.makedirs(lr_bins)
+        with open(os.path.join(lr_bins, 'closed.fa'), 'w') as fh:
+            fh.write('>George__flye__contig_1\nACGTACGT\n')
+        with open(os.path.join(lr_bins, 'open.fa'), 'w') as fh:
+            fh.write('>George__flye__contig_2\nACGT\n>George__flye__contig_3\nGGCC\n')
+        info = os.path.join(root, 'George.contig_info.tsv')
+        with open(info, 'w') as fh:
+            fh.write('contig\toriginal_name\tlength\tcircular\tdepth\n'
+                     'George__flye__contig_1\tcontig_1\t8\tyes\t30\n'
+                     'George__flye__contig_2\tcontig_2\t4\tyes\t9\n'
+                     'George__flye__contig_3\tcontig_3\t4\tpossibly\t9\n')
+        ck = os.path.join(root, 'checkm2', MAPPER, row)
+        os.makedirs(ck)
+        pd.DataFrame([{'Name': 'closed', 'Completeness': 98.0, 'Contamination': 0.5},
+                      {'Name': 'open', 'Completeness': 97.0, 'Contamination': 1.0}]).to_csv(
+            os.path.join(ck, 'quality_report.tsv'), sep='\t', index=False)
+        rr = os.path.join(root, 'rrna_trna', MAPPER, row)
+        os.makedirs(rr)
+        with open(os.path.join(rr, 'rrna_trna.tsv'), 'w') as fh:
+            fh.write('# test\nbin\trRNA_5S\trRNA_16S\trRNA_23S\ttRNA_Amino_Acids\n'
+                     'closed\t1\t1\t1\t20\nopen\t0\t1\t1\t19\n')
+        stub.params.contig_samples = [SAMPLE, row]
+        stub.params.row_sample = {SAMPLE: SAMPLE, row: 'George'}
+        stub.params.row_assembler = {SAMPLE: 'megahit', row: 'flye'}
+        stub.params.row_contig_info = {row: info}
+        stub.params.rrna_base = os.path.join(root, 'rrna_trna')
+        run_script(stub)
+
+        df = pd.read_csv(stub.output.summary, sep='\t', keep_default_na=False).set_index('Original_Name')
+        closed, open_, short = df.loc['closed'], df.loc['open'], df.loc['bin.1']
+        assert closed['Sample_ID'] == 'George' and closed['Assembler'] == 'flye', closed
+        assert (closed['Closed'], int(closed['Circular_Contigs'])) == ('TRUE', 1), closed
+        assert (open_['Closed'], int(open_['Circular_Contigs'])) == ('FALSE', 1), open_
+        assert closed['MIMAG_Quality'] == 'HQ' and closed['MIMAG_Quality_Full'] == 'HQ', closed
+        # No 5S: high quality by completeness and contamination, not by the full standard.
+        assert open_['MIMAG_Quality'] == 'HQ' and open_['MIMAG_Quality_Full'] == 'MQ', open_
+        assert (short['Circular_Contigs'], short['Closed']) == ('NA', 'NA'), short
+        assert short['rRNA_5S'] == 'NA' and short['MIMAG_Quality_Full'] == 'NA', short
+
+
 if __name__ == '__main__':
     failed = 0
     for test in (test_classified_first_bin_does_not_crash,
-                 test_missing_taxonomy_counts_only_unclassified_bins):
+                 test_missing_taxonomy_counts_only_unclassified_bins,
+                 test_long_read_row_columns):
         try:
             test()
             print('ok:  ', test.__name__)

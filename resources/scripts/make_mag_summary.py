@@ -16,6 +16,18 @@ checkm2_base = snakemake.params.checkm2_base
 gunc_base = snakemake.params.gunc_base
 cmseq_base = snakemake.params.cmseq_base
 assemblers = snakemake.params.assemblers
+# Binning row -> the sample its contigs came from, and the assembler that made
+# them, from the binning table. A long-read row (<sample>__flye) is not itself
+# a sample. Absent (older callers): the row is the sample, and the assembler
+# is found from which contigs file exists, as before.
+row_sample = dict(getattr(snakemake.params, 'row_sample', {}) or {})
+row_assembler = dict(getattr(snakemake.params, 'row_assembler', {}) or {})
+# Long-read row -> its assembler's contig table (circular yes/no/possibly per
+# contig), for Circular_Contigs and Closed. Short-read rows have none: their
+# assemblers do not report circularity, so both columns are NA for them.
+row_contig_info = dict(getattr(snakemake.params, 'row_contig_info', {}) or {})
+# count_rrna_trna output, for the full MIMAG standard; absent for older callers.
+rrna_base = getattr(snakemake.params, 'rrna_base', None)
 # 'das_tool' or 'binette', and the directory that tool's selected bins are
 # in. Defaulted so an older config that predates the switch still works.
 consolidation_tool = getattr(snakemake.params, 'consolidation_tool', 'das_tool')
@@ -388,11 +400,77 @@ SUMMARY_COLUMNS = (
     'Assembler', 'Winning_Binner', 'Domain', 'Phylum', 'Class', 'Order',
     'Family', 'Genus', 'Species', 'GTDB_Classification', 'MSA_Percent',
     'GTDBTk_Warnings', 'Completeness', 'Contamination', 'Quality_Score',
-    'MIMAG_Quality', 'GUNC_Clade_Separation_Score', 'GUNC_Pass',
+    'MIMAG_Quality', 'rRNA_5S', 'rRNA_16S', 'rRNA_23S', 'tRNA_Amino_Acids',
+    'MIMAG_Quality_Full', 'GUNC_Clade_Separation_Score', 'GUNC_Pass',
     'Strain_Heterogeneity', 'SH_Positions_Evaluated', 'Total_Length_BP',
-    'Num_Contigs', 'Largest_Contig', 'GC_Percent', 'N50', 'Coding_Density',
-    'Total_Coding_Sequences', 'Notes',
+    'Num_Contigs', 'Largest_Contig', 'GC_Percent', 'N50', 'Circular_Contigs',
+    'Closed', 'Coding_Density', 'Total_Coding_Sequences', 'Notes',
 )
+
+
+def load_rrna_trna(path):
+    """bin -> (5S, 16S, 23S, tRNA amino acids) from count_rrna_trna.py's table."""
+    out = {}
+    if not path or not os.path.exists(path):
+        return out
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith('#') or line.startswith('bin\t'):
+                continue
+            f = line.rstrip('\n').split('\t')
+            if len(f) == 5:
+                out[f[0]] = tuple(int(x) for x in f[1:])
+    return out
+
+
+def load_circular(path):
+    """contig -> circular ('yes', 'no', 'possibly') from a long-read contig table."""
+    out = {}
+    if not path or not os.path.exists(path):
+        return out
+    with open(path) as fh:
+        next(fh, None)
+        for line in fh:
+            f = line.rstrip('\n').split('\t')
+            if len(f) >= 4:
+                out[f[0]] = f[3]
+    return out
+
+
+def contig_names(fasta_path):
+    with open(fasta_path) as fh:
+        return [l[1:].split()[0] for l in fh if l.startswith('>')]
+
+
+def circularity(fasta_path, circular):
+    """(Circular_Contigs, Closed) for one MAG: how many of its contigs the
+    assembler called circular ('yes' only), and whether the MAG is a single
+    such contig. ('NA', 'NA') without a contig table (short-read assembly)."""
+    if not circular:
+        return 'NA', 'NA'
+    names = contig_names(fasta_path)
+    n = sum(1 for c in names if circular.get(c) == 'yes')
+    return n, 'TRUE' if len(names) == 1 and n == 1 else 'FALSE'
+
+
+def mimag_quality_full(completeness, contamination, rrna):
+    """MIMAG tier with every criterion: high also needs 5S, 16S and 23S rRNA
+    and tRNAs for at least 18 of the 20 standard amino acids. NA when rRNA and
+    tRNA were not counted."""
+    if rrna is None:
+        return 'NA'
+    try:
+        c, x = float(completeness), float(contamination)
+    except (TypeError, ValueError):
+        return 'NA'
+    s5, s16, s23, aa = rrna
+    # Same completeness and contamination boundaries as mimag_quality, so the
+    # two columns differ only by the rRNA and tRNA criteria.
+    if c >= 90 and x < 5 and s5 > 0 and s16 > 0 and s23 > 0 and aa >= 18:
+        return 'HQ'
+    if c >= 50 and x < 10:
+        return 'MQ'
+    return 'LQ'
 
 
 def binners_with_bins(bins_base, mapper, sample):
@@ -448,9 +526,12 @@ for mapper in mappers:
         # summary.tsv to read it from.
         msa_map = load_msa_percent(os.path.join(gtdbtk_base, mapper, sample))
         cmseq_map = load_cmseq(os.path.join(cmseq_base, mapper, sample))
+        rrna_map = (load_rrna_trna(os.path.join(rrna_base, mapper, sample, 'rrna_trna.tsv'))
+                    if rrna_base else {})
+        circular_map = load_circular(row_contig_info.get(sample))
         checkm2_map = load_checkm2(os.path.join(checkm2_base, mapper, sample))
         gunc_map = load_gunc(os.path.join(gunc_base, mapper, sample))
-        assembler = get_assembler(sample, assemblers)
+        assembler = row_assembler.get(sample) or get_assembler(sample, assemblers)
 
         n_before = len(all_mags)
         missing_tax = []
@@ -486,11 +567,13 @@ for mapper in mappers:
             if bin_name not in gunc_map or not _has_value(gunc.get('gunc_pass')):
                 missing_gunc.append(bin_name)
             sh, sh_n = cmseq_map.get(bin_name, ('NA', 'NA'))
+            rrna = rrna_map.get(bin_name)
+            circ_n, closed = circularity(fa, circular_map)
 
             all_mags.append({
                 'original_name': bin_name,
                 'original_path': fa,
-                'sample_id': sample,
+                'sample_id': row_sample.get(sample, sample),
                 'assembler': assembler,
                 'winning_binner': binner,
                 'tax_dict': tax_dict,
@@ -498,6 +581,9 @@ for mapper in mappers:
                 'gtdbtk_classification': full_classification,
                 'strain_heterogeneity': sh,
                 'sh_positions_evaluated': sh_n,
+                'rrna': rrna,
+                'circular_contigs': circ_n,
+                'closed': closed,
                 'msa_percent': msa_percent,
                 'gtdbtk_warnings': gtdbtk_warnings,
                 **qc,
@@ -583,6 +669,12 @@ for i, mag in enumerate(all_mags, 1):
         'Contamination': mag.get('contamination', ''),
         'Quality_Score': mag.get('quality_score', ''),
         'MIMAG_Quality': mimag_quality(mag.get('completeness', ''), mag.get('contamination', '')),
+        'rRNA_5S': mag['rrna'][0] if mag.get('rrna') else 'NA',
+        'rRNA_16S': mag['rrna'][1] if mag.get('rrna') else 'NA',
+        'rRNA_23S': mag['rrna'][2] if mag.get('rrna') else 'NA',
+        'tRNA_Amino_Acids': mag['rrna'][3] if mag.get('rrna') else 'NA',
+        'MIMAG_Quality_Full': mimag_quality_full(mag.get('completeness', ''), mag.get('contamination', ''),
+                                                 mag.get('rrna')),
         'GUNC_Clade_Separation_Score': mag.get('gunc_clade_separation_score', ''),
         'GUNC_Pass': mag.get('gunc_pass', ''),
         'Strain_Heterogeneity': mag.get('strain_heterogeneity', 'NA') or 'NA',
@@ -592,6 +684,8 @@ for i, mag in enumerate(all_mags, 1):
         'Largest_Contig': mag.get('largest_contig', ''),
         'GC_Percent': mag.get('gc_percent', ''),
         'N50': mag.get('N50', ''),
+        'Circular_Contigs': mag.get('circular_contigs', 'NA'),
+        'Closed': mag.get('closed', 'NA'),
         'Coding_Density': mag.get('coding_density', ''),
         'Total_Coding_Sequences': mag.get('total_coding_sequences', ''),
         'Notes': 'NA',
@@ -604,8 +698,8 @@ for entry in sorted(samples_without_mags, key=lambda e: (e['sample'], e['mapper'
     row = dict.fromkeys(SUMMARY_COLUMNS, 'NA')
     row['MAG_ID'] = 'NONE'
     row['New_Name'] = 'NONE'
-    row['Sample_ID'] = entry['sample']
-    row['Assembler'] = get_assembler(entry['sample'], assemblers)
+    row['Sample_ID'] = row_sample.get(entry['sample'], entry['sample'])
+    row['Assembler'] = row_assembler.get(entry['sample']) or get_assembler(entry['sample'], assemblers)
     row['Notes'] = entry['note']
     rows.append(row)
 

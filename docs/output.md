@@ -10,11 +10,15 @@ output/
 │   ├── fastqc_pre_trim/ fastqc_post_trim/ fastqc_post_host/   per-(sample,run,read) FastQC reports
 │   ├── fastp/                            fastp JSON + HTML reports (single-end reports under fastp/se/)
 │   ├── host_filter/nonhost/              host-filtered FASTQ files (input to everything downstream)
+│   ├── host_filter_ont/                  long reads: nonhost/{sample}.ont.fastq.gz, host/ (BAM, IDs), {sample}.counts.tsv
 │   └── multiqc/multiqc.html             combined QC report
 │
 ├── assemble/
 │   ├── megahit/{sample}.contigs.fasta      MEGAHIT assemblies
 │   ├── metaspades/{sample}.contigs.fasta   metaSPAdes assemblies
+│   ├── flye/, myloasm/                     long-read assemblies (Platform ont samples): {sample}.draft.fasta,
+│   │                                       .polished.fasta, .contigs.fasta (lambda removed), .contig_info.tsv,
+│   │                                       .polish_changes.tsv, .control_strand.tsv
 │   └── multiqc_assemble/multiqc.html       assembly QC report (QUAST stats)
 │
 ├── prototype_selection/
@@ -91,6 +95,9 @@ After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one
 | `Contamination` | CheckM2 contamination (%) |
 | `Quality_Score` | Completeness − 5 × Contamination |
 | `MIMAG_Quality` | MIMAG quality tier: `HQ` (≥90% complete, <5% contamination), `MQ` (≥50%, <10%), `LQ` (all else) |
+| `rRNA_5S`, `rRNA_16S`, `rRNA_23S` | rRNA genes found by barrnap with at least `params.rrna_trna.min_fraction` (default 0.5) of the gene's expected length aligned, the same rule for all three genes (larger count of its bacterial and archaeal models) |
+| `tRNA_Amino_Acids` | Standard amino acids (of 20) with at least one tRNA, from tRNAscan-SE |
+| `MIMAG_Quality_Full` | MIMAG tier with every criterion: `HQ` also needs 5S, 16S and 23S rRNA and tRNAs for at least 18 amino acids; otherwise as `MIMAG_Quality` |
 | `GUNC_Clade_Separation_Score` | GUNC chimera score |
 | `GUNC_Pass` | Whether the bin passes GUNC QC |
 | `Total_Length_BP` | Total genome size (bp) |
@@ -98,6 +105,8 @@ After `make_mag_summary` completes, `output/mag_qc/mag_summary.tsv` contains one
 | `Largest_Contig` | Length of the longest contig (bp) |
 | `GC_Percent` | GC content (%) |
 | `N50` | Assembly N50 (bp) |
+| `Circular_Contigs` | Contigs in the MAG its long-read assembler called circular; `NA` for short-read assemblies, whose assemblers do not report circularity |
+| `Closed` | `TRUE` when the MAG is one contig called circular (a closed genome); `FALSE` otherwise; `NA` for short-read assemblies |
 | `Coding_Density` | Fraction of genome that is coding sequence (from CheckM2) |
 | `Total_Coding_Sequences` | Number of predicted coding sequences (from CheckM2) |
 | `Notes` | `NA` for a MAG; on a `NONE` row, why that sample produced none |

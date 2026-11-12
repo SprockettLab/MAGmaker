@@ -58,59 +58,68 @@ CHECKV_BLANK = {
 
 rows = []
 
-for assembler in assemblers:
-    for sample in contig_samples:
-        # Only summarize the assembler that actually produced this sample.
-        if which_assembler(sample, assemblers) != assembler:
-            continue
+# (assembler, binning row) pairs and row -> sample from the rule. A long-read
+# row (<sample>__flye) is not itself a sample, and its outputs are named after
+# the sample's contigs file. Without them (older callers): every assembler x
+# row, row = sample, as before.
+pairs = list(getattr(snakemake.params, 'pairs', []) or
+             [(a, r) for a in assemblers for r in contig_samples])
+row_sample = dict(getattr(snakemake.params, 'row_sample', {}) or {})
+long_read_rows = set(getattr(snakemake.params, 'long_read_rows', []) or [])
 
-        summary_dir = os.path.join(genomad_base, assembler, sample,
-                                   f'{sample}.contigs_summary')
-        virus_df = load_tsv(os.path.join(
-            summary_dir, f'{sample}.contigs_virus_summary.tsv'))
-        plasmid_df = load_tsv(os.path.join(
-            summary_dir, f'{sample}.contigs_plasmid_summary.tsv'))
-        checkv_map = load_checkv(os.path.join(checkv_base, assembler, sample))
+for assembler, row in pairs:
+    sample = row_sample.get(row, row)
+    # Only summarize the assembler that actually produced a short-read row;
+    # a long-read row has exactly one, its own.
+    if row not in long_read_rows and which_assembler(sample, assemblers) != assembler:
+        continue
+    summary_dir = os.path.join(genomad_base, assembler, row,
+                               f'{sample}.contigs_summary')
+    virus_df = load_tsv(os.path.join(
+        summary_dir, f'{sample}.contigs_virus_summary.tsv'))
+    plasmid_df = load_tsv(os.path.join(
+        summary_dir, f'{sample}.contigs_plasmid_summary.tsv'))
+    checkv_map = load_checkv(os.path.join(checkv_base, assembler, row))
 
-        # Viral contigs (with CheckV quality joined on seq_name).
-        for _, row in virus_df.iterrows():
-            seq_name = str(row.get('seq_name', ''))
-            checkv = checkv_map.get(seq_name, CHECKV_BLANK)
-            rows.append({
-                'Sample_ID': sample,
-                'Assembler': assembler,
-                'Element_Type': 'virus',
-                'Seq_Name': seq_name,
-                'Length_BP': row.get('length', ''),
-                'Topology': row.get('topology', ''),
-                'N_Genes': row.get('n_genes', ''),
-                'N_Hallmarks': row.get('n_hallmarks', ''),
-                'Score': row.get('virus_score', ''),
-                'FDR': row.get('fdr', ''),
-                'Taxonomy': row.get('taxonomy', ''),
-                'Conjugation_Genes': '',
-                'AMR_Genes': '',
-                **checkv,
-            })
+    # Viral contigs (with CheckV quality joined on seq_name).
+    for _, row in virus_df.iterrows():
+        seq_name = str(row.get('seq_name', ''))
+        checkv = checkv_map.get(seq_name, CHECKV_BLANK)
+        rows.append({
+            'Sample_ID': sample,
+            'Assembler': assembler,
+            'Element_Type': 'virus',
+            'Seq_Name': seq_name,
+            'Length_BP': row.get('length', ''),
+            'Topology': row.get('topology', ''),
+            'N_Genes': row.get('n_genes', ''),
+            'N_Hallmarks': row.get('n_hallmarks', ''),
+            'Score': row.get('virus_score', ''),
+            'FDR': row.get('fdr', ''),
+            'Taxonomy': row.get('taxonomy', ''),
+            'Conjugation_Genes': '',
+            'AMR_Genes': '',
+            **checkv,
+        })
 
-        # Plasmid contigs (geNomad only; CheckV does not score plasmids).
-        for _, row in plasmid_df.iterrows():
-            rows.append({
-                'Sample_ID': sample,
-                'Assembler': assembler,
-                'Element_Type': 'plasmid',
-                'Seq_Name': str(row.get('seq_name', '')),
-                'Length_BP': row.get('length', ''),
-                'Topology': row.get('topology', ''),
-                'N_Genes': row.get('n_genes', ''),
-                'N_Hallmarks': row.get('n_hallmarks', ''),
-                'Score': row.get('plasmid_score', ''),
-                'FDR': row.get('fdr', ''),
-                'Taxonomy': '',
-                'Conjugation_Genes': row.get('conjugation_genes', ''),
-                'AMR_Genes': row.get('amr_genes', ''),
-                **CHECKV_BLANK,
-            })
+    # Plasmid contigs (geNomad only; CheckV does not score plasmids).
+    for _, row in plasmid_df.iterrows():
+        rows.append({
+            'Sample_ID': sample,
+            'Assembler': assembler,
+            'Element_Type': 'plasmid',
+            'Seq_Name': str(row.get('seq_name', '')),
+            'Length_BP': row.get('length', ''),
+            'Topology': row.get('topology', ''),
+            'N_Genes': row.get('n_genes', ''),
+            'N_Hallmarks': row.get('n_hallmarks', ''),
+            'Score': row.get('plasmid_score', ''),
+            'FDR': row.get('fdr', ''),
+            'Taxonomy': '',
+            'Conjugation_Genes': row.get('conjugation_genes', ''),
+            'AMR_Genes': row.get('amr_genes', ''),
+            **CHECKV_BLANK,
+        })
 
 columns = [
     'Sample_ID', 'Assembler', 'Element_Type', 'Seq_Name', 'Length_BP',

@@ -72,7 +72,46 @@ print('Contig Pairings: %s' % contig_pairings)
 def get_contigs(sample, binning_df):
     return(binning_df.loc[sample, 'Contigs'])
 
+
+# A binning row is a contig set. Short-read rows are named after their sample;
+# long-read rows are <sample>__<assembler> (generate_binning_config). The
+# optional Source_Sample and Assembler columns say which sample and assembler a row
+# is; a table without them (older, or hand-written) keeps the old meaning:
+# the row is the sample, assembled by the first configured assembler that can.
+def binning_column(row, column):
+    if column in binning_df.columns:
+        value = str(binning_df.loc[row, column]).strip()
+        if value:
+            return value
+    return None
+
+
+def sample_of(row):
+    """The sample whose reads a binning row's contigs were assembled from."""
+    return binning_column(row, 'Source_Sample') or row
+
+
+def assembler_of(row):
+    """The assembler that made a binning row's contigs."""
+    named = binning_column(row, 'Assembler')
+    if named:
+        return named
+    for assembler in config['assemblers']:
+        if sample_of(row) in set(samples_for_assembler(assembler)):
+            return assembler
+    return 'unknown'
+
+
+def is_long_read_row(row):
+    return assembler_of(row) in LONG_READ_ASSEMBLER_NAMES
+
+
+def row_contigs(row):
+    """The contigs FASTA of a binning row, as the table names it."""
+    return get_contigs(row, binning_df)
+
 include: "resources/snakefiles/qc.smk"
+include: "resources/snakefiles/long_reads.smk"
 include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/mapping.smk"
 include: "resources/snakefiles/binning.smk"
@@ -80,6 +119,7 @@ include: "resources/snakefiles/selected_bins.smk"
 include: "resources/snakefiles/cmseq.smk"
 include: "resources/snakefiles/mag_qc.smk"
 include: "resources/snakefiles/virus.smk"
+include: "resources/snakefiles/long_read_binning.smk"
 
 
 rule select_bins:

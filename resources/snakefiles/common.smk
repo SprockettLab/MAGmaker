@@ -4,8 +4,12 @@
 # Both entry points need the same metadata, so the loader lives here rather
 # than being duplicated. This file defines no rules; it only exposes:
 #
-#   metadata_table   pandas DataFrame indexed by (Sample, Sequencing_Run)
+#   metadata_table   pandas DataFrame indexed by (Sample, Sequencing_Run);
+#                    short-read (Platform illumina) rows only
 #   samples          unique sample names, in file order
+#   long_read_table  the Platform ont rows, same index
+#   long_read_samples   samples with long reads, in file order
+#   long_reads_for()    sample -> list of its long-read FASTQ paths
 #   seqruns          the (Sample, Sequencing_Run) MultiIndex
 #   reads            read identifiers from config, normally ['R1', 'R2']
 #   get_read()       (sample, seqrun, read) -> FASTQ path
@@ -18,6 +22,15 @@
 # Columns beyond the four required ones are carried through untouched and can
 # be read from metadata_table inside a rule, so study covariates live
 # alongside the file paths instead of in a separate sheet.
+#
+# PLATFORM
+#
+# Every row states its sequencing platform in the required Platform column:
+# illumina for short reads, ont for Oxford Nanopore long reads. A long-read
+# run is one more row of the same sample, with its FASTQ in R1_fp and the
+# literal NA in R2_fp. Nothing is detected from the reads. Short-read steps
+# see only the illumina rows, so a sheet without ont rows runs exactly as
+# before; ont rows go to long_read_table.
 #
 # SINGLE-END INPUT
 #
@@ -37,7 +50,16 @@ import os
 import sys
 import pandas as pd
 
-REQUIRED_COLUMNS = ["Sample", "Sequencing_Run", "R1_fp", "R2_fp"]
+REQUIRED_COLUMNS = ["Sample", "Sequencing_Run", "Platform", "R1_fp", "R2_fp"]
+
+# Platform values, exact and lowercase.
+SHORT_READ_PLATFORM = "illumina"
+LONG_READ_PLATFORM = "ont"
+PLATFORMS = [SHORT_READ_PLATFORM, LONG_READ_PLATFORM]
+
+# Separates a sample from an assembler in long-read binning rows
+# (<sample>__flye), so it may not occur in the name of a long-read sample.
+ROW_SEPARATOR = "__"
 
 # The literal that declares single-end input. Case-sensitive and exact:
 # "na", "n/a" and "None" are all still errors.
@@ -62,7 +84,7 @@ def _fail(message):
 
 def load_metadata(config):
     """in : the snakemake config dict
-       out: (metadata_table, samples)
+       out: (metadata_table, samples, long_read_table)
 
     Validation happens up front so a malformed sheet fails immediately with a
     specific message, instead of surfacing later as a missing-input or
@@ -111,6 +133,19 @@ def load_metadata(config):
 
     table.columns = [str(c).strip() for c in table.columns]
 
+    if "Platform" not in table.columns and all(
+            c in table.columns for c in REQUIRED_COLUMNS if c != "Platform"):
+        _fail(
+            "metadata file %s has no Platform column.\n\n"
+            "Every row must state its sequencing platform: illumina for short\n"
+            "reads, ont for Oxford Nanopore long reads. For a sheet of short\n"
+            "reads only, add the column with illumina on every row:\n\n"
+            "    awk 'BEGIN{FS=OFS=\"\\t\"} NR==1{print $0, \"Platform\"; next}"
+            " {print $0, \"illumina\"}' \\\n"
+            "        %s > metadata_with_platform.txt\n\n"
+            "See docs/configuration.md." % (metadata_fp, metadata_fp)
+        )
+
     missing = [c for c in REQUIRED_COLUMNS if c not in table.columns]
     if missing:
         _fail(
@@ -139,7 +174,7 @@ def load_metadata(config):
         lines = ", ".join(str(i + 2) for i in blank.index)
         _fail(
             "metadata file %s has empty required fields on line(s): %s\n"
-            "Every row needs Sample, Sequencing_Run and R1_fp."
+            "Every row needs Sample, Sequencing_Run, Platform and R1_fp."
             % (metadata_fp, lines)
         )
 
@@ -159,6 +194,57 @@ def load_metadata(config):
             "mistaken for single-end data." % (metadata_fp, lines)
         )
 
+    bad_platform = table[~table["Platform"].isin(PLATFORMS)]
+    if not bad_platform.empty:
+        lines = ", ".join(str(i + 2) for i in bad_platform.index)
+        _fail(
+            "metadata file %s has an unknown Platform on line(s): %s\n"
+            "Platform must be one of: %s (exact, lowercase)."
+            % (metadata_fp, lines, ", ".join(PLATFORMS))
+        )
+
+    # A repeated (Sample, Sequencing_Run) makes the index ambiguous, across
+    # platforms too, so it is checked before the rows are split.
+    duplicated = table.duplicated(subset=["Sample", "Sequencing_Run"], keep=False)
+    if duplicated.any():
+        pairs = (table.loc[duplicated, ["Sample", "Sequencing_Run"]]
+                 .drop_duplicates().itertuples(index=False, name=None))
+        _fail(
+            "metadata file %s has duplicate (Sample, Sequencing_Run) pairs:\n  %s\n"
+            "Each row must describe one sequencing run of one sample."
+            % (metadata_fp, "\n  ".join("%s / %s" % p for p in pairs))
+        )
+
+    long_rows = table[table["Platform"] == LONG_READ_PLATFORM].copy()
+    table = table[table["Platform"] == SHORT_READ_PLATFORM].copy()
+
+    paired_long = long_rows[long_rows["R2_fp"] != SINGLE_END_MARKER]
+    if not paired_long.empty:
+        lines = ", ".join(str(i + 2) for i in paired_long.index)
+        _fail(
+            "metadata file %s has an ont row with an R2_fp on line(s): %s\n"
+            "A long-read run has one FASTQ, in R1_fp; R2_fp must be NA."
+            % (metadata_fp, lines)
+        )
+    no_short = sorted(set(long_rows["Sample"]) - set(table["Sample"]))
+    if no_short:
+        _fail(
+            "metadata file %s has long reads for sample(s) with no illumina\n"
+            "rows: %s\n\n"
+            "Long-read assemblies are polished with the sample's short reads\n"
+            "and binned with short-read coverage, so a sample with long reads\n"
+            "needs short reads too. Leave samples without short reads (e.g.\n"
+            "negative controls) out of the sheet." % (metadata_fp, ", ".join(no_short))
+        )
+    separator = sorted(s for s in set(long_rows["Sample"]) if ROW_SEPARATOR in s)
+    if separator:
+        _fail(
+            "metadata file %s: long-read sample name(s) contain %r: %s\n"
+            "%r separates a sample from its assembler in binning rows\n"
+            "(e.g. v1928__flye), so it may not occur in these names."
+            % (metadata_fp, ROW_SEPARATOR, ", ".join(separator), ROW_SEPARATOR)
+        )
+
     table["Layout"] = table["R2_fp"].apply(
         lambda v: "SINGLE" if v == SINGLE_END_MARKER else "PAIRED"
     )
@@ -176,29 +262,29 @@ def load_metadata(config):
             % (metadata_fp, names)
         )
 
-    # A repeated (Sample, Sequencing_Run) makes the index ambiguous; caught
-    # here because pandas would otherwise raise with no hint at the cause.
-    duplicated = table.duplicated(subset=["Sample", "Sequencing_Run"], keep=False)
-    if duplicated.any():
-        pairs = (table.loc[duplicated, ["Sample", "Sequencing_Run"]]
-                 .drop_duplicates().itertuples(index=False, name=None))
-        _fail(
-            "metadata file %s has duplicate (Sample, Sequencing_Run) pairs:\n  %s\n"
-            "Each row must describe one sequencing run of one sample."
-            % (metadata_fp, "\n  ".join("%s / %s" % p for p in pairs))
-        )
-
     metadata_table = table.set_index(["Sample", "Sequencing_Run"])
     metadata_table.sort_index(inplace=True)
+    long_read_table = long_rows.set_index(["Sample", "Sequencing_Run"])
+    long_read_table.sort_index(inplace=True)
 
     # Order-preserving unique, so run order follows the file rather than sort
     # order -- keeps logs and reports in the order the user wrote them.
     samples = list(dict.fromkeys(table["Sample"]))
 
-    return metadata_table, samples
+    return metadata_table, samples, long_read_table
 
 
-metadata_table, samples = load_metadata(config)
+metadata_table, samples, long_read_table = load_metadata(config)
+
+# Samples with long reads, in file order (a subset of samples).
+long_read_samples = [s for s in samples
+                     if s in set(long_read_table.index.get_level_values("Sample"))]
+
+
+def long_reads_for(sample):
+    """in : sample name
+       out: its long-read FASTQ paths, one per ont row, in index order"""
+    return list(long_read_table.loc[sample, "R1_fp"])
 
 
 def _validate_prototype_exclusions(config, samples):
@@ -367,14 +453,32 @@ def binner_of_table(path):
         return 'unknown'
 
 
+# Long-read assemblers (long_reads.smk); their binning rows also get the
+# circular-contig candidate set.
+LONG_READ_ASSEMBLER_NAMES = ("flye", "myloasm")
+
+
+def is_long_read_row(row):
+    """Overridden in Snakefile-bin, which knows the binning table."""
+    return False
+
+
 def binner_tables(wildcards):
-    """Every enabled binner's contig-to-bin table for one sample."""
-    return expand(
+    """Every enabled binner's contig-to-bin table for one binning row, plus,
+    for a long-read row, the circular-contig candidates (one bin per closed
+    contig; long_read_binning.smk)."""
+    tables = expand(
         "output/selected_bins/{binner}/{mapper}/scaffolds2bin/"
         "{contig_sample}_scaffolds2bin.tsv",
         binner=enabled_binners(),
         mapper=config['mappers'],
         contig_sample=wildcards.contig_sample)
+    if is_long_read_row(wildcards.contig_sample):
+        tables += expand(
+            "output/selected_bins/circular/{mapper}/scaffolds2bin/"
+            "{contig_sample}_scaffolds2bin.tsv",
+            mapper=config['mappers'], contig_sample=wildcards.contig_sample)
+    return tables
 
 
 # Where each binner leaves its bins. CONCOCT's differs because its clusters

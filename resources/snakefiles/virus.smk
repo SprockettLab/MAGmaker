@@ -10,12 +10,32 @@
 # not part of per-sample genome recovery.
 
 
+def virus_pairs():
+    """(assembler, binning row) pairs the viral track runs on: every configured
+    short-read assembler for a short-read row, as before; a long-read row's
+    own assembler only."""
+    pairs = []
+    for row in contig_pairings:
+        if is_long_read_row(row):
+            pairs.append((assembler_of(row), row))
+        else:
+            pairs += [(a, row) for a in config['assemblers']]
+    return pairs
+
+
+def contigs_stem(row):
+    """geNomad names its outputs after the input FASTA, <sample>.contigs; for a
+    long-read row <sample>__<assembler> that is the source sample's name."""
+    return sample_of(row) + ".contigs"
+
+
 rule run_genomad:
     """
     geNomad end-to-end: identify viral + plasmid contigs and classify them.
     """
     input:
-        contigs = "output/assemble/{assembler}/{contig_sample}.contigs.fasta"
+        contigs = lambda wildcards: "output/assemble/{0}/{1}.contigs.fasta".format(
+            wildcards.assembler, sample_of(wildcards.contig_sample))
     output:
         done = touch("output/virus/genomad/{assembler}/{contig_sample}/.done")
     params:
@@ -83,9 +103,9 @@ rule run_checkv:
     output:
         done = touch("output/virus/checkv/{assembler}/{contig_sample}/.done")
     params:
-        virus_fna = ("output/virus/genomad/{assembler}/{contig_sample}/"
-                     "{contig_sample}.contigs_summary/"
-                     "{contig_sample}.contigs_virus.fna"),
+        virus_fna = lambda wildcards: (
+            "output/virus/genomad/{0}/{1}/{2}_summary/{2}_virus.fna".format(
+                wildcards.assembler, wildcards.contig_sample, contigs_stem(wildcards.contig_sample))),
         outdir = "output/virus/checkv/{assembler}/{contig_sample}",
         db = config['params']['checkv']['db_path']
     threads:
@@ -136,19 +156,18 @@ rule make_virus_summary:
     Merge per-sample geNomad (virus + plasmid) and CheckV outputs into one table.
     """
     input:
-        genomad = lambda wildcards: expand(
-            "output/virus/genomad/{assembler}/{contig_sample}/.done",
-            assembler=config['assemblers'],
-            contig_sample=contig_pairings.keys()),
-        checkv = lambda wildcards: expand(
-            "output/virus/checkv/{assembler}/{contig_sample}/.done",
-            assembler=config['assemblers'],
-            contig_sample=contig_pairings.keys())
+        genomad = lambda wildcards: ["output/virus/genomad/{0}/{1}/.done".format(a, r)
+                                     for a, r in virus_pairs()],
+        checkv = lambda wildcards: ["output/virus/checkv/{0}/{1}/.done".format(a, r)
+                                    for a, r in virus_pairs()]
     output:
         summary = "output/virus/virus_summary.tsv"
     params:
         contig_samples = list(contig_pairings.keys()),
         assemblers = config['assemblers'],
+        pairs = virus_pairs(),
+        row_sample = {r: sample_of(r) for r in contig_pairings},
+        long_read_rows = [r for r in contig_pairings if is_long_read_row(r)],
         genomad_base = "output/virus/genomad",
         checkv_base = "output/virus/checkv"
     conda:

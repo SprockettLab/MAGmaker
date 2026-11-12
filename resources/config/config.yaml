@@ -68,6 +68,13 @@ assemblers:
   - megahit             # default: faster, lower memory
 # - metaspades          # better on low-complexity samples, much more RAM
 
+# Long-read assemblers, run for samples with Platform ont rows only (none
+# otherwise). Both are kept, like megahit and metaSPAdes; each long-read
+# assembly is polished with the sample's short reads and binned on its own.
+long_read_assemblers:
+  - flye                # metaFlye --meta --nano-hq
+  - myloasm
+
 biobakery:
   - metaphlan
 
@@ -433,6 +440,31 @@ params:
   checkv:
     db_path: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/checkv/checkv-db-v1.5"  # checkv download_database <dir>
 
+  # rRNA and tRNA genes per MAG (count_rrna_trna), for MIMAG_Quality_Full in
+  # mag_summary.tsv. An rRNA gene counts when at least min_fraction of its
+  # expected length aligned (barrnap reports the percent for genes under 80%);
+  # one rule for 5S, 16S and 23S. The rule is written into each rrna_trna.tsv.
+  rrna_trna:
+    min_fraction: 0.5
+
+  # ── LONG READS (Platform ont rows; unused without them) ────────────────────
+
+  long_reads:
+    # A long read is host when the union of the read bases its primary and
+    # supplementary alignments to the host reference cover is at least this
+    # fraction of its length. Reads with less aligned are kept and counted.
+    # Basis (WF18, 2026-11-05): under an any-alignment rule, reads less than
+    # half aligned to host were 47.0% bacterial (16,523 of 35,191 checked).
+    host_min_aligned_fraction: 0.5
+    # minimap2 -I for the host index: larger than the host reference, so the
+    # index is one part (see rule host_minimap2_index).
+    host_index_max_bases: 16G
+    # The ligation kit's DNA Control Strand (lambda phage). Long-read contigs
+    # with at least this fraction of their length aligned to it are removed
+    # after polishing, before binning and the viral track.
+    control_strand_fasta: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/lambda/NC_001416.1.fasta"
+    control_strand_min_aligned_fraction: 0.5
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # HOST FILTER
@@ -503,6 +535,11 @@ threads:
   cutadapt_pe: 4
   host_filter: 8
   bowtie2_build: 8
+  host_minimap2_index: 8     # long reads (Platform ont)
+  host_filter_ont: 32
+  flye: 64
+  myloasm: 64
+  polish_long_read_assembly: 32
   # 2  assembly
   megahit: 16
   spades: 8
@@ -546,6 +583,16 @@ mem_mb:
   # retry (retries.host_bowtie2_build, default 2) up to the _max.
   host_bowtie2_build: 64000
   host_bowtie2_build_max: 256000
+  host_minimap2_index: 64000   # long reads: one-part map-ont index of the host
+  host_filter_ont: 64000
+  # Long-read assemblers: the WF18 test runs' request (Flye took up to ~9.5 h
+  # on ~38 Gb of reads); not a measured peak. _max is the retry ceiling,
+  # below a defq node's ~773 GB.
+  flye: 500000
+  flye_max: 700000
+  myloasm: 500000
+  myloasm_max: 700000
+  polish_long_read_assembly: 64000   # bwa, Polypolish, pypolca; not measured
   megahit: 256000
   spades: 256000
   multiqc: 32000

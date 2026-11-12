@@ -352,7 +352,8 @@ rule generate_binning_config:
         "output/config/auto_binning.txt"
     params:
         n=config['params']['prototypes']['n'],
-        assemblers=config['assemblers']
+        assemblers=config['assemblers'],
+        long_read_assemblers=config.get('long_read_assemblers', []) or []
     log:
         "output/logs/generate_binning_config/generate_binning_config.log"
     run:
@@ -426,8 +427,25 @@ rule generate_binning_config:
                 'Sample': sample,
                 'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",
                 'Read_Groups': 'Group1' if is_prototype else '',
-                'Contig_Groups': 'Group1'
+                'Contig_Groups': 'Group1',
+                'Source_Sample': sample,
+                'Assembler': assembler,
             })
+        # One row per long-read assembly (long_reads.smk), named
+        # <sample>__<assembler>: binned with the same prototype short-read
+        # coverage as every other assembly (Contig_Groups), contributing no
+        # reads of its own to other assemblies (empty Read_Groups); its own
+        # long-read coverage is added in long_read_binning.smk.
+        for sample in long_read_samples:
+            for assembler in params.long_read_assemblers:
+                rows.append({
+                    'Sample': f"{sample}{ROW_SEPARATOR}{assembler}",
+                    'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",
+                    'Read_Groups': '',
+                    'Contig_Groups': 'Group1',
+                    'Source_Sample': sample,
+                    'Assembler': assembler,
+                })
 
         os.makedirs(os.path.dirname(output[0]), exist_ok=True)
         df = pd.DataFrame(rows).set_index('Sample')

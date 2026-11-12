@@ -103,9 +103,7 @@ rule run_DAS_Tool:
         # Every binner listed in `binners:`, rather than a fixed three, so a
         # fourth is a config change instead of an edit here.
         tables = binner_tables,
-        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                    assembler = config['assemblers'],
-                    contig_sample = wildcards.contig_sample)
+        contigs = lambda wildcards: row_contigs(wildcards.contig_sample)
     output:
         out="output/selected_bins/{mapper}/run_DAS_Tool/{contig_sample}_DASTool_summary.tsv"
     params:
@@ -321,9 +319,7 @@ rule run_binette:
     """
     input:
         staged = "output/selected_bins/{mapper}/binette_input/{contig_sample}",
-        contigs = lambda wildcards: expand("output/assemble/{assembler}/{contig_sample}.contigs.fasta",
-                    assembler = config['assemblers'],
-                    contig_sample = wildcards.contig_sample)
+        contigs = lambda wildcards: row_contigs(wildcards.contig_sample)
     output:
         report = "output/selected_bins/{mapper}/run_binette/{contig_sample}/final_bins_quality_reports.tsv",
         contig2bin = "output/selected_bins/{mapper}/run_binette/{contig_sample}/final_contig_to_bin.tsv"

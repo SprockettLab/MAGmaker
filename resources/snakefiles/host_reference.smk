@@ -170,11 +170,12 @@ def boardercollie_setup(hf, bc_config):
             + reference)
 
     host['reference_out'] = reference
+    # The shared indexes, built once per host key by BoarderCollie and linked
+    # here; each is built only when a run asks for it. The minimap2 one is for
+    # long reads (Platform ont), so short-read runs never build it.
+    host['indexes'] = ['bowtie2', 'minimap2']
+    host['minimap2_out'] = index_stem + '.map-ont.mmi'
     if not own_index_built(index_stem):
-        # The shared index, built once per host key by BoarderCollie and
-        # linked here. minimap2 is listed so a long-read caller can ask for
-        # it too; it is only built when asked for.
-        host['indexes'] = ['bowtie2', 'minimap2']
         host['bowtie2_out'] = index_stem
     return (reference, index_stem, snakefile, bc)
 
@@ -212,6 +213,8 @@ if USE_BOARDERCOLLIE:
     except ValueError as err:
         _host_fail(str(err))
     print(boardercollie_summary(_hf, BOARDERCOLLIE_CONFIG), file=sys.stderr)
+    # Long reads: BoarderCollie's shared minimap2 index, linked here.
+    host_minimap2_out = BOARDERCOLLIE_CONFIG['hosts'][0]['minimap2_out']
     if own_index_built(host_base):
         print("MAGmaker host index: this run folder's own bowtie2 index "
               f"({host_base}), built before shared indexes; kept as it is.",

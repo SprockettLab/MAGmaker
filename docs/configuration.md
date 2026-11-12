@@ -430,15 +430,19 @@ where a fresh attempt lands in a lower-contention window and clears it.
 One tab-separated table describing every sequencing run. This replaces the
 former `samples.txt` + `units.txt` pair.
 
-**Required columns:** `Sample`, `Sequencing_Run`, `R1_fp`, `R2_fp`
+**Required columns:** `Sample`, `Sequencing_Run`, `Platform`, `R1_fp`, `R2_fp`
 
 ```
-Sample   Sequencing_Run   R1_fp                       R2_fp                       Treatment_Group   Timepoint
-John     Run_1            /path/John_R1.fastq.gz      /path/John_R2.fastq.gz      Treatment         1963
-Paul     Run_1            /path/Paul_R1.fastq.gz      /path/Paul_R2.fastq.gz      Treatment         1963
-Paul     Run_2            /path/Paul_L2_R1.fastq.gz   /path/Paul_L2_R2.fastq.gz   Treatment         1963
-George   Run_1            /path/George_R1.fastq.gz    /path/George_R2.fastq.gz    Control           1963
+Sample   Sequencing_Run   Platform   R1_fp                       R2_fp                       Treatment_Group   Timepoint
+John     Run_1            illumina   /path/John_R1.fastq.gz      /path/John_R2.fastq.gz      Treatment         1963
+Paul     Run_1            illumina   /path/Paul_R1.fastq.gz      /path/Paul_R2.fastq.gz      Treatment         1963
+Paul     Run_2            illumina   /path/Paul_L2_R1.fastq.gz   /path/Paul_L2_R2.fastq.gz   Treatment         1963
+George   Run_1            illumina   /path/George_R1.fastq.gz    /path/George_R2.fastq.gz    Control           1963
 ```
+
+`Platform` states each run's sequencing platform: `illumina` for short reads,
+`ont` for Oxford Nanopore long reads (see [Long-read runs](#long-read-nanopore-runs)).
+It is required on every row; nothing is detected from the reads.
 
 One row per sequencing run: a sample sequenced on two lanes, or resequenced,
 gets one row per run with the same `Sample` value. The sample list is taken
@@ -528,6 +532,48 @@ already done.
 the bundled test reads. The loader behaviour is covered by
 `python3 resources/test/test_metadata_layout.py`.
 
+### Long-read (Nanopore) runs
+
+A sample's Nanopore long reads are one more row of the same sample, with
+`Platform` `ont`, the reads in `R1_fp` and `NA` in `R2_fp`:
+
+```
+Sample   Sequencing_Run   Platform   R1_fp                       R2_fp
+v1928    Run1             illumina   /path/zr31528_6_R1.fastq.gz /path/zr31528_6_R2.fastq.gz
+v1928    ONT1             ont        /path/v1928.ont.fastq.gz    NA
+```
+
+The FASTQ holds every read of the sample, not host-filtered; MAGmaker removes
+host reads itself. Long reads are optional: samples without `ont` rows run
+exactly as before, and a sheet with no `ont` rows plans exactly the same jobs.
+A sample with `ont` rows must also have paired `illumina` rows, because its
+long-read assemblies are polished and binned with its short reads; samples
+with long reads only (for example negative controls) are left out of the
+sheet. Long-read sample names may not contain `__`, which separates sample
+and assembler in binning rows.
+
+For each such sample MAGmaker:
+
+1. **Removes host reads** (`host_filter_ont`): minimap2 `map-ont` against the
+   run's host reference, primary and supplementary alignments. A read is host
+   when the union of its aligned bases is at least
+   `params.long_reads.host_min_aligned_fraction` (0.5) of its length. Writes
+   the nonhost reads, the host alignments (BAM) and read IDs, and
+   `output/qc/host_filter_ont/<sample>.counts.tsv` with every parameter.
+2. **Assembles** with each of `long_read_assemblers` (Flye `--meta --nano-hq`;
+   myloasm), contigs renamed `<sample>__<assembler>__<original>`, with a
+   contig table (length, circular, depth).
+3. **Polishes** each assembly with the sample's QC'd, host-filtered short
+   reads: Polypolish `--careful`, then pypolca `--careful`. The draft is kept;
+   `<sample>.polish_changes.tsv` gives the bases each stage changed per contig.
+4. **Removes the DNA Control Strand**: contigs at least 50% aligned to lambda
+   (`params.long_reads.control_strand_fasta`), kept aside with a table. The
+   result is `output/assemble/<assembler>/<sample>.contigs.fasta`.
+5. **Bins** each long-read assembly as its own binning row (below), with the
+   prototypes' short-read coverage, its own long-read coverage, and its
+   circular contigs of at least 500 kb offered as candidate bins. MAG QC and
+   the viral track run as for every assembly.
+
 ### Migrating from samples.txt + units.txt
 
 `samples.txt` is no longer used -- its only role was listing sample names,
@@ -540,6 +586,16 @@ sed '1s/.*/Sample\tSequencing_Run\tR1_fp\tR2_fp/' units.txt > metadata.txt
 then replace `samples:` and `units:` in your config with a single
 `metadata:` key. A config still using the old keys fails immediately with
 these instructions rather than a confusing error.
+
+### Adding the Platform column to an existing sheet
+
+A sheet written before `Platform` existed stops on load with this fix. For a
+sheet of short reads only, add the column with `illumina` on every row:
+
+```bash
+awk 'BEGIN{FS=OFS="\t"} NR==1{print $0, "Platform"; next} {print $0, "illumina"}' \
+    metadata.txt > metadata_with_platform.txt
+```
 
 ---
 
@@ -573,6 +629,21 @@ read-sample in a group are mapped to every contig-sample in that group.
 - A sample with a `Read_Groups` label contributes reads to that group.
 - A sample can belong to both.
 - A sample with neither label is present in `metadata.txt` but skipped by the binning pipeline.
+
+**Rows are contig sets.** The generated table also has `Source_Sample` (the
+sample whose reads the contigs came from) and `Assembler`. A short-read row is
+named after its sample. Each long-read assembly gets a row of its own, named
+`<sample>__<assembler>`:
+
+```
+Sample        Contigs                                     Read_Groups  Contig_Groups  Source_Sample  Assembler
+v1928         output/assemble/megahit/v1928.contigs.fasta Group1       Group1         v1928          megahit
+v1928__flye   output/assemble/flye/v1928.contigs.fasta                 Group1         v1928          flye
+```
+
+Every binner reads the row's `Contigs` path. A table without `Source_Sample`
+and `Assembler` (hand-written, or older) keeps the old meaning: each row is a
+sample, assembled by the first configured assembler that can assemble it.
 
 ---
 
