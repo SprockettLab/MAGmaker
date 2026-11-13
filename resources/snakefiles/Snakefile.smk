@@ -67,3 +67,6 @@ rule all:
         "output/prototype_selection/prototype_selection/selected_prototypes.yaml",
         *metaphlan_targets,
         *kraken_targets
+
+
+disable_inner_retries()
