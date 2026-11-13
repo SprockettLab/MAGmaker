@@ -266,6 +266,30 @@ if _single_end_lr:
           "Polypolish and pypolca need paired short reads." % ", ".join(_single_end_lr))
 
 
+def polish_mem_mb(wildcards, input, attempt):
+    """Snakemake resource callable for polish_long_read_assembly's mem_mb.
+
+    Peak memory scales with the draft assembly. WF18_FullTest_2026
+    (2026-11-13) benchmarks, max_rss per draft length, all 5 polishes that
+    completed: flye v1928 98,010 MB / 1,225.8 Mbp, flye v2522 114,654 /
+    1,426.8, myloasm v1928 120,893 / 1,527.7 (79-80 MB per Mbp for all
+    three), flye v2980 52,174 / 82.2, myloasm v2980 57,323 / 108.1 (small
+    drafts sit on a ~50 GB floor). Polypolish polish --careful was killed at
+    the 64 GB first attempt on all four drafts over 1.2 Gbp, and at 128 GB
+    on myloasm v2193 (2,261 Mbp) and myloasm v2522 (1,890 Mbp).
+
+    Request: per_mb (default 100) x draft file size in MiB, about 25% above
+    the measured rate, with mem_mb.polish_long_read_assembly (64000) as the
+    floor. The draft file is used rather than input.size_mb, which also
+    counts the short reads. Doubles per retry, capped at
+    mem_mb.polish_long_read_assembly_max (700000, under a defq node)."""
+    mem = config["mem_mb"]
+    draft_mib = os.path.getsize(input.draft) / 1048576
+    base = max(mem.get("polish_long_read_assembly", 64000),
+               int(draft_mib * mem.get("polish_long_read_assembly_per_mb", 100)))
+    return min(mem.get("polish_long_read_assembly_max", 700000), base * attempt)
+
+
 rule polish_long_read_assembly:
     """
     bwa mem -a for each mate separately, polypolish filter, polypolish polish
@@ -291,7 +315,7 @@ rule polish_long_read_assembly:
     retries:
         config['retries'].get('polish_long_read_assembly', 1)
     resources:
-        mem_mb=mem_escalate('polish_long_read_assembly', base_default=64000),
+        mem_mb=polish_mem_mb,
         runtime=runtime_escalate('polish_long_read_assembly', base_default=2880)
     log:
         "output/logs/assemble/polish/{lr_assembler}/{sample}.log"

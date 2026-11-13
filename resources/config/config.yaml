@@ -661,7 +661,12 @@ mem_mb:
   flye_max: 700000
   myloasm: 500000
   myloasm_max: 700000
-  polish_long_read_assembly: 64000   # bwa, Polypolish, pypolca; not measured
+  # Polishing (Polypolish --careful peaks): the floor, then MB requested per
+  # MiB of draft assembly (measured ~80 per Mbp on 1.2-1.5 Gbp drafts,
+  # WF18_FullTest_2026), doubling per retry up to _max.
+  polish_long_read_assembly: 64000
+  polish_long_read_assembly_per_mb: 100
+  polish_long_read_assembly_max: 700000
   megahit: 256000
   spades: 256000
   multiqc: 32000
