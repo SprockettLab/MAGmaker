@@ -73,7 +73,21 @@ def trna_amino_acids(trnascan_text: str) -> int:
 
 
 def run(cmd):
-    return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    """Run a tool and return its stdout; on failure, exit with the tool's own
+    stderr so the reason reaches the rule log."""
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0:
+        sys.exit(f"{' '.join(cmd)}\nexited with status {p.returncode}; its stderr:\n{p.stderr}")
+    return p.stdout
+
+
+def check_barrnap_version():
+    """The partial-gene rule reads barrnap 0.9's 'aligned only N percent' note
+    and its --reject option; barrnap 1.x has neither."""
+    p = subprocess.run(["barrnap", "--version"], capture_output=True, text=True)
+    out = (p.stdout + p.stderr).strip()   # 0.9 prints it on stderr, 1.x on stdout
+    if p.returncode != 0 or out.split()[:2] != ["barrnap", "0.9"]:
+        sys.exit(f"barrnap 0.9 is required, found: {out.strip()!r}")
 
 
 def barrnap(kingdom: str, fasta: str, threads: int, min_fraction: float) -> str:
@@ -87,8 +101,7 @@ def measure(fasta: str, threads: int, min_fraction: float) -> dict:
                    count_rrna(barrnap("arc", fasta, threads, min_fraction), min_fraction))
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "trna.txt")
-        subprocess.run(["tRNAscan-SE", "-G", "-Q", "--thread", str(threads), "-o", out, fasta],
-                       capture_output=True, text=True, check=True)
+        run(["tRNAscan-SE", "-G", "-Q", "--thread", str(threads), "-o", out, fasta])
         aa = trna_amino_acids(open(out).read()) if os.path.exists(out) else 0
     return {**rrna, "tRNA": aa}
 
@@ -103,6 +116,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     if not 0 < a.min_fraction <= 1:
         sys.exit(f"--min-fraction must be in (0, 1], got {a.min_fraction}")
+    check_barrnap_version()
     bins = sorted(glob.glob(os.path.join(a.bins_dir, "*.fa")))
     with open(a.out + ".partial", "w") as fh:
         fh.write(f"# barrnap (bac and arc, --reject {min(BARRNAP_REJECT, a.min_fraction)}; "
