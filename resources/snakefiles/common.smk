@@ -667,6 +667,27 @@ def runtime_escalate(key, base_default, cap_multiple=3):
     return _resolve
 
 
+def disable_inner_retries():
+    """Keep retries in the main Snakemake process only.
+
+    Under the SLURM executor each job runs a second Snakemake inside its
+    allocation (exec mode "remote"), launched with --retries 0. A rule's own
+    `retries:` directive overrides that flag, so the inner process re-ran a
+    failed command in the same allocation, at the same memory and time,
+    before the main process retried with mem_escalate/runtime_escalate.
+    WF18_FullTest_2026 (2026-11-13): every run_cenotetaker3 (retries: 2)
+    first attempt shows three srun steps, all OUT_OF_MEMORY at 32 GB, ~3 h
+    per job; polish_long_read_assembly (retries: 1) showed two. The main
+    process then resubmitted correctly at 64 GB.
+
+    Call at the end of each Snakefile, after every rule is defined. Only
+    the remote (in-allocation) process is changed; local runs and the main
+    process keep their retries."""
+    if workflow.remote_exec:
+        for r in workflow.rules:
+            r.restart_times = 0
+
+
 def megahit_runtime(wildcards, input, attempt):
     """Snakemake resource callable for rule megahit's runtime.
 
