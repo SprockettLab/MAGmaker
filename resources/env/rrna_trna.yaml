@@ -5,5 +5,7 @@ channels:
   - nodefaults
 dependencies:
   - python>=3.10
-  - barrnap>=0.9
+  # barrnap 1.x is a rewrite (Infernal instead of HMMER, no --reject, no
+  # "aligned only N percent" partial notes) that count_rrna_trna.py cannot use.
+  - barrnap=0.9
   - trnascan-se>=2.0.12
