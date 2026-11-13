@@ -24,6 +24,19 @@ def _predictor_contigs(wildcards):
         wildcards.assembler, sample_of(wildcards.contig_sample))
 
 
+def cenotetaker3_mem_mb(wildcards, input, attempt):
+    """Cenote-Taker3 memory from the size of the contigs FASTA: the larger of
+    config mem_mb.run_cenotetaker3 and _per_mb MB per MiB, times the attempt
+    number, capped at _max. A flat 32 GB fitted every MEGAHIT assembly (<= 709
+    Mbp) but OOM-killed all six 1.2-2.2 GiB long-read assemblies in
+    WF18_FullTest_2026; see config.yaml for the measurements."""
+    mem = config["mem_mb"]
+    contigs_mib = os.path.getsize(input.contigs) / 1048576
+    base = max(mem.get("run_cenotetaker3", 32000),
+               int(contigs_mib * mem.get("run_cenotetaker3_per_mb", 60)))
+    return min(mem.get("run_cenotetaker3_max", 700000), base * attempt)
+
+
 rule run_vibrant:
     """VIBRANT phage prediction for one assembly."""
     input:
@@ -90,7 +103,7 @@ rule run_cenotetaker3:
     threads: config['threads'].get('cenotetaker3', 16)
     retries: config['retries'].get('run_cenotetaker3', 2)
     resources:
-        mem_mb=mem_escalate('run_cenotetaker3', base_default=32000),
+        mem_mb=cenotetaker3_mem_mb,
         runtime=runtime_escalate('run_cenotetaker3', base_default=480),
     conda:
         tool_env('cenotetaker3') if VIRUS_ON['cenotetaker3'] else "../env/mag_qc.yaml"

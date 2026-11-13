@@ -667,6 +667,14 @@ mem_mb:
   polish_long_read_assembly: 64000
   polish_long_read_assembly_per_mb: 100
   polish_long_read_assembly_max: 700000
+  # Cenote-Taker3: the floor, then MB requested per MiB of the contigs FASTA,
+  # times the attempt number, up to _max. WF18_FullTest_2026 peaks: MEGAHIT 3.5-26.8
+  # GB on 26-709 Mbp (~37 MB per MiB at the top); long-read v2980 15.8/19.1 GB
+  # on 80/105 MiB, ~1.6x MEGAHIT of similar size; long-read 1.2-2.2 GiB
+  # assemblies OOM at 32 GB. 60 per MiB is ~1.6 x 37, an estimate to confirm.
+  run_cenotetaker3: 32000
+  run_cenotetaker3_per_mb: 60
+  run_cenotetaker3_max: 700000
   megahit: 256000
   spades: 256000
   multiqc: 32000
