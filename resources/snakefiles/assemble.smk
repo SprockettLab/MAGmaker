@@ -1,3 +1,19 @@
+def assembler_mem(key):
+    """Memory callable for a short-read assembler (megahit, spades).
+
+    First attempt, unchanged from before: the larger of 16 GB and
+    mem_mb.<key>_per_mb (default 10) MB per MB of input reads, capped at
+    mem_mb.<key>. Each retry multiplies that by the attempt number, capped at
+    mem_mb.<key>_max (default 700000, below a defq node's ~740 GB job limit).
+    Before this the request had no attempt term, so the rule's retries reran a
+    failed assembly at exactly the size that had just failed."""
+    def _resolve(wildcards, input, attempt):
+        mem = config["mem_mb"]
+        first = min(mem[key], max(16000, int(input.size_mb * mem.get(key + "_per_mb", 10))))
+        return min(mem.get(key + "_max", 700000), first * attempt)
+    return _resolve
+
+
 rule metaspades:
     """
 
@@ -23,10 +39,7 @@ rule metaspades:
     retries:
         config['retries'].get('metaspades', 2)
     resources:
-        mem_mb=lambda wildcards, input: min(
-            config['mem_mb']['spades'],
-            max(16000, input.size_mb * 10)
-        ),
+        mem_mb=assembler_mem('spades'),
         runtime=runtime_escalate('metaspades', base_default=1440)
     shell:
         """
@@ -73,10 +86,7 @@ rule megahit:
     retries:
         config['retries'].get('megahit', 2)
     resources:
-        mem_mb=lambda wildcards, input: min(
-            config['mem_mb']['megahit'],
-            max(16000, input.size_mb * 10)
-        ),
+        mem_mb=assembler_mem('megahit'),
         runtime=megahit_runtime
     shell:
         """

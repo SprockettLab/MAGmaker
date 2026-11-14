@@ -675,6 +675,9 @@ mem_mb:
   run_cenotetaker3: 32000
   run_cenotetaker3_per_mb: 60
   run_cenotetaker3_max: 700000
+  # Short-read assemblers: first attempt is the larger of 16 GB and _per_mb
+  # (default 10) MB per MB of input reads, capped here; each retry multiplies
+  # it by the attempt number, up to _max (default 700000).
   megahit: 256000
   spades: 256000
   multiqc: 32000
