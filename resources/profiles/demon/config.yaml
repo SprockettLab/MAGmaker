@@ -91,10 +91,9 @@ set-resources:
     runtime: 2880
   boardercollie_minimap2_index:
     runtime: 480
-  metaspades:
-    mem_mb: 256000      # metaSPAdes OOMs at the assemble rule's ~16 GB
-                        # input-scaled floor; this overrides it. defq nodes
-                        # are ~755 GB, so 256 GB still fits 3 jobs per node.
+  # metaspades: no mem_mb entry. A set-resources mem_mb replaces the rule's
+  # input-sized, retry-escalating request (config mem_mb.spades*), so a fixed
+  # 256 GB here made every metaSPAdes job reserve 256 GB whatever its size.
   # metaphlan: no entry. A set-resources mem_mb replaces the rule's
   # mem_escalate, so every retry asked for the same 32 GB; on the WF18 vervet
   # run (2026-11-12) MetaPhlAn jobs ran out of memory at ~32.5 GB on retry

@@ -675,11 +675,19 @@ mem_mb:
   run_cenotetaker3: 32000
   run_cenotetaker3_per_mb: 60
   run_cenotetaker3_max: 700000
-  # Short-read assemblers: first attempt is the larger of 16 GB and _per_mb
-  # (default 10) MB per MB of input reads, capped here; each retry multiplies
-  # it by the attempt number, up to _max (default 700000).
+  # Short-read assemblers: first attempt is the larger of _min (default 16000)
+  # and _per_mb (default 10) MB per MiB of host-filtered R1+R2 reads, capped at
+  # the bare key; each retry multiplies it by the attempt number, up to _max
+  # (default 700000).
   megahit: 256000
-  spades: 256000
+  # metaSPAdes, measured on 88 vervet gut samples (229-7,787 MiB of reads):
+  # peaks 8.6-104 GB, median 39 GB, roughly 17-25 MB per MiB on large inputs
+  # and up to ~95 per MiB on small ones. With these values 86 of the 88 fit
+  # on the first attempt and the other 2 on the second. The values were
+  # chosen on those same 88 samples, so other data may land differently.
+  spades: 128000
+  spades_min: 32000
+  spades_per_mb: 35
   multiqc: 32000
   checkm2: 32000
   # GTDB-Tk's memory is dominated by pplacer during classify_wf, which loads

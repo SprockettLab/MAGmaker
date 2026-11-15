@@ -1,15 +1,16 @@
 def assembler_mem(key):
     """Memory callable for a short-read assembler (megahit, spades).
 
-    First attempt, unchanged from before: the larger of 16 GB and
-    mem_mb.<key>_per_mb (default 10) MB per MB of input reads, capped at
+    First attempt: the larger of mem_mb.<key>_min (default 16000) and
+    mem_mb.<key>_per_mb (default 10) MB per MiB of input reads, capped at
     mem_mb.<key>. Each retry multiplies that by the attempt number, capped at
     mem_mb.<key>_max (default 700000, below a defq node's ~740 GB job limit).
     Before this the request had no attempt term, so the rule's retries reran a
     failed assembly at exactly the size that had just failed."""
     def _resolve(wildcards, input, attempt):
         mem = config["mem_mb"]
-        first = min(mem[key], max(16000, int(input.size_mb * mem.get(key + "_per_mb", 10))))
+        floor = mem.get(key + "_min", 16000)
+        first = min(mem[key], max(floor, int(input.size_mb * mem.get(key + "_per_mb", 10))))
         return min(mem.get(key + "_max", 700000), first * attempt)
     return _resolve
 
