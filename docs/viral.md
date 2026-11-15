@@ -167,6 +167,16 @@ A predictor that finishes without writing its viral FASTA gets an empty one
 plus a `NO_VIRAL_FASTA` note, and `virus_name_mapping.tsv` records
 `Output_Present = no`. "Wrote nothing" and "called nothing" stay apart.
 
+VIBRANT exits 0 even when it crashes, so `run_vibrant` judges it by its own
+run log instead. A traceback, an error line, or a log without the closing
+"putative phages were identified" fails the job and the retry runs it again
+from an empty folder. Only a finished run that called nothing ("No phages
+found", or 0 phages identified) gets an empty FASTA, with a `NO_PHAGES_FOUND`
+note, and counts as zero calls. VIBRANT 1.2.1 has a race that causes such
+crashes: it deletes `VIBRANT_AMG*` files in the background and then writes
+`VIBRANT_AMG_individuals_<base>.tsv`, which the late delete can remove. On
+the WF18 runs it crashed on 11 of 115 assemblies.
+
 Every predictor rule clears its output folder before running, as geNomad's
 does: all of them resume from whatever they find, so a retry after a killed
 attempt would otherwise mix new results with half-written ones.

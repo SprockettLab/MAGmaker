@@ -230,12 +230,24 @@ def provirus_columns(seq_name, checkv):
 rows, mapping_rows = [], []
 
 
+def output_present(predictor, assembler, row, path):
+    """'no' when the file is missing, and also when the predictor rule left a
+    NO_VIRAL_FASTA note: the empty FASTA it writes then is a placeholder, and
+    counting it would report "wrote nothing" as zero calls."""
+    if not path or not os.path.exists(path):
+        return 'no'
+    if predictor != 'genomad' and os.path.exists(
+            os.path.join(virus_base, predictor, assembler, row, 'NO_VIRAL_FASTA')):
+        return 'no'
+    return 'yes'
+
+
 def note_mapping(predictor, sample, assembler, row, path, sequences,
                  mapped, unmapped, not_in_assembly):
     mapping_rows.append({
         'Predictor': predictor, 'Sample_ID': sample, 'Assembler': assembler,
         'Binning_Row': row,
-        'Output_Present': 'yes' if path and os.path.exists(path) else 'no',
+        'Output_Present': output_present(predictor, assembler, row, path),
         'Sequences': sequences, 'Mapped_To_Contig': mapped,
         'Unmapped': unmapped, 'Not_In_Assembly': len(not_in_assembly),
         'Example_Not_In_Assembly': ','.join(sorted(not_in_assembly)[:3]),
