@@ -45,6 +45,18 @@ these to one flag loses that: on WF30's earlier catalog CheckV alone marked
 339 of 3,910 medium-or-better genomes (8.7%) as proviruses, while geNomad OR
 CheckV marked 1,157 of 3,910 (29.6%).
 
+ASSEMBLER_CIRCULAR. Topology (geNomad) and CheckV's "Complete" detect a
+circle only from a repeat at the two ends of the sequence (direct or inverted
+terminal repeats, at least ~20 bp). MEGAHIT leaves about one k-mer of overlap
+on a contig that closes a loop, so its circles show up that way. Flye and
+myloasm decide circularity in their assembly graph and trim the overlap, so
+their circular contigs carry no terminal repeat and read as linear to both
+tools: in WF18_FullTest_2026, 6 of 468 flye virus calls on contigs flye marked
+circular had Topology DTR, and 2 were CheckV Complete. Assembler_Circular is
+the assembler's own call (yes, no, or myloasm's "possibly") from
+<sample>.contig_info.tsv, for the call's Source_Contig; it is blank for
+short-read assemblers, which report none.
+
 Run by virus.smk's make_virus_summary rule through the `snakemake` object.
 """
 
@@ -82,7 +94,8 @@ CHECKV_BLANK['Provirus_CheckV_Coords'] = ''
 
 COLUMNS = [
     'Sample_ID', 'Assembler', 'Binning_Row', 'Predictor', 'Element_Type',
-    'Seq_Name', 'Source_Contig', 'Length_BP', 'Topology', 'N_Genes',
+    'Seq_Name', 'Source_Contig', 'Length_BP', 'Topology',
+    'Assembler_Circular', 'N_Genes',
     'N_Hallmarks', 'Score', 'FDR', 'Taxonomy', 'Conjugation_Genes',
     'AMR_Genes', 'checkv_quality', 'miuvig_quality', 'checkv_completeness',
     'checkv_contamination', 'provirus', 'warnings', 'Provirus_Predictor',
@@ -171,6 +184,16 @@ def assembly_contigs(sample, assembler):
                 if tokens:
                     names.add(tokens[0])
     return names
+
+
+def assembler_circular(sample, assembler):
+    """contig -> the assembler's own circular call, from the
+    <sample>.contig_info.tsv a long-read assembler writes; empty for an
+    assembler that writes none."""
+    path = os.path.join('output', 'assemble', assembler,
+                        '{0}.contig_info.tsv'.format(sample))
+    return {(entry.get('contig') or '').strip(): (entry.get('circular') or '').strip()
+            for entry in load_tsv(path)}
 
 
 def load_checkv(directory):
@@ -388,11 +411,19 @@ for assembler, row in pairs:
     # a long-read row has exactly one, its own.
     if row not in long_read_rows and not contigs:
         continue
+    circular = assembler_circular(sample, assembler) if row in long_read_rows else {}
+    first_new = len(rows)
     for predictor in predictors:
         if predictor == 'genomad':
             genomad_rows(sample, assembler, row, stem, contigs)
         else:
             other_rows(predictor, sample, assembler, row, stem, contigs)
+    for record in rows[first_new:]:
+        record['Assembler_Circular'] = circular.get(record['Source_Contig'], '')
+    if row in long_read_rows:
+        found = sum(1 for r in rows[first_new:] if r['Assembler_Circular'])
+        print('{0} ({1}): assembler circular call for {2} of {3} rows'.format(
+            row, assembler, found, len(rows) - first_new))
 
 
 def write(path, columns, table):

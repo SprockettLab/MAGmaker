@@ -305,7 +305,11 @@ rule make_virus_summary:
         checkv = lambda wildcards: (
             ["output/virus/checkv/{0}/{1}/.done".format(a, r)
              for a, r in virus_pairs()] if VIRUS_ON['genomad'] else []),
-        predictors = lambda wildcards: predictor_targets()
+        predictors = lambda wildcards: predictor_targets(),
+        # Long-read assemblers' own circularity calls, for Assembler_Circular.
+        contig_info = lambda wildcards: [
+            "output/assemble/{0}/{1}.contig_info.tsv".format(a, sample_of(r))
+            for a, r in virus_pairs() if is_long_read_row(r)]
     output:
         summary = "output/virus/virus_summary.tsv",
         mapping = "output/virus/virus_name_mapping.tsv"
