@@ -13,7 +13,10 @@
 # three resume from whatever they find, so a retry after a killed attempt would
 # otherwise mix new results with half-written ones. A tool that finishes
 # without writing its viral FASTA gets an empty one plus a NO_VIRAL_FASTA note,
-# so "called nothing" and "wrote nothing" stay apart in the summary.
+# which the summary reports as Output_Present = no, so "called nothing" and
+# "wrote nothing" stay apart. VIBRANT, which exits 0 when it crashes, is judged
+# by its own log instead (see run_vibrant): a crash fails the job, and a
+# finished run with no phages gets NO_PHAGES_FOUND (called nothing).
 
 wildcard_constraints:
     predictor="vibrant|cenotetaker3|virsorter2",
@@ -69,11 +72,47 @@ rule run_vibrant:
         VIBRANT_run.py -i {input.contigs} -t {threads} \
             -d {params.db} -m {params.files} -folder {params.outdir} \
             > {log} 2>&1
-        if [ ! -e {params.fasta} ]; then
+        # VIBRANT exits 0 even when it fails: its whole run sits in a
+        # try/except that logs the traceback to its own log and carries on.
+        # It also deletes VIBRANT_AMG*<base>* in the background without
+        # waiting, then writes VIBRANT_AMG_individuals_<base>.tsv, so a late
+        # rm sometimes removes the new file and the run dies at that open()
+        # (FileNotFoundError, VIBRANT_run.py line 651), after the phages are
+        # called but before its folders are tidied. WF18 hit this on 11 of
+        # 115 assemblies. Its own log is therefore the only evidence of
+        # success: a finished run logs "putative phages were identified", a
+        # genuine nothing-found run logs "No phages found". Anything else
+        # fails the job, so the retry (which starts from an empty folder)
+        # runs it again instead of recording a crash as zero calls.
+        vlog=$(find {params.outdir} -name 'VIBRANT_log_run_*.log' | head -n 1)
+        if [ -z "$vlog" ]; then
+            echo "MAGmaker: VIBRANT wrote no run log; treating as a failure" >> {log}
+            exit 1
+        fi
+        cat "$vlog" >> {log}
+        if grep -qE 'Traceback|VIBRANT error|VIBRANT Error' "$vlog"; then
+            echo "MAGmaker: VIBRANT failed (traceback or error in $vlog)" >> {log}
+            exit 1
+        elif grep -q 'putative phages were identified' "$vlog"; then
+            if [ ! -e {params.fasta} ]; then
+                if grep -q '^0 putative phages were identified' "$vlog"; then
+                    mkdir -p "$(dirname {params.fasta})"
+                    : > {params.fasta}
+                    echo "VIBRANT finished and identified 0 phages" \
+                        > {params.outdir}/NO_PHAGES_FOUND
+                else
+                    echo "MAGmaker: VIBRANT reports phages but {params.fasta} is missing" >> {log}
+                    exit 1
+                fi
+            fi
+        elif grep -q 'No phages found' "$vlog"; then
             mkdir -p "$(dirname {params.fasta})"
             : > {params.fasta}
-            echo "VIBRANT wrote no viral FASTA; recorded as no output" \
-                > {params.outdir}/NO_VIRAL_FASTA
+            echo "VIBRANT finished and found no phages" \
+                > {params.outdir}/NO_PHAGES_FOUND
+        else
+            echo "MAGmaker: VIBRANT's log ($vlog) shows no finished run" >> {log}
+            exit 1
         fi
         {{
           echo "tool\tVIBRANT"
