@@ -155,6 +155,7 @@ provirus columns and the vRhyme tables.
 | `Element_Type` | `virus` or `plasmid` |
 | `Seq_Name` | contig id |
 | `Length_BP`, `Topology`, `N_Genes`, `N_Hallmarks` | geNomad contig stats |
+| `Assembler_Circular` | the long-read assembler's own circular call for `Source_Contig` (`yes`, `no`, or myloasm's `possibly`), from `<sample>.contig_info.tsv`; blank for MEGAHIT and metaSPAdes. Flye and myloasm trim the overlap of a closed contig, so `Topology` (DTR/ITR) and CheckV `Complete` miss most of their circles; this column does not |
 | `Score`, `FDR` | geNomad virus/plasmid score and false-discovery rate |
 | `Taxonomy` | geNomad viral taxonomy (virus rows) |
 | `Conjugation_Genes`, `AMR_Genes` | geNomad plasmid annotations (plasmid rows) |
