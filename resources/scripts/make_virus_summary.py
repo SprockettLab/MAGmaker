@@ -373,11 +373,17 @@ def ct3_input_names(assembler, row):
     """Cenote-Taker3's own name -> the original header it came from."""
     path = os.path.join(virus_base, 'cenotetaker3', assembler, row, 'ct3',
                         'ct3_virus_summary.tsv')
+    # Cenote-Taker3 3.4.4 sometimes lists a contig a second time as a blank
+    # row: the name with a trailing space, no input_name, length 0 (WF18
+    # metaSPAdes, e.g. "ct3_33 " right after ct3_33, all DTR genomes). The
+    # strip makes the two names equal, so a blank row may never replace a
+    # filled one: that silently unmapped 71 of 80,930 calls, 70 of them
+    # medium quality or better.
     names = {}
     for entry in load_tsv(path):
         own = (entry.get('contig') or '').strip()
         original = (entry.get('input_name') or '').strip()
-        if own:
+        if own and (original or own not in names):
             names[own] = original
     return names, path
 

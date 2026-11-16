@@ -208,7 +208,11 @@ The traps each rule exists for:
   `virus_name_mapping.tsv`), which also blanked `Assembler_Circular` for them.
 - **Cenote-Taker3** renames beyond recovery (`>ct3_99@C3`), so its FASTA
   headers are never parsed; the join goes through its own summary table,
-  which carries both its name and the full original header.
+  which carries both its name and the full original header. That table
+  sometimes lists a contig a second time as a blank row (`ct3_33 ` with a
+  trailing space, no `input_name`, length 0); a blank row never replaces a
+  filled one. Before this was handled, WF18's metaSPAdes run lost 71 of
+  80,930 calls to it, 70 of them medium quality or better.
 - **geNomad** puts provirus coordinates on the name itself, so without the
   `|` cut no provirus ever joins its contig.
 - **VirSorter2** appends `||full`, `||{i}_partial` and `||lt2gene`.
