@@ -188,6 +188,15 @@ params:
 
   multiqc: ''
 
+  # Host reads split by member genome (output/qc/host_filter/
+  # host_genome_counts.tsv), for a host that joins several genomes, e.g. a
+  # primate and a parasite. Removed_Confident counts only removed pairs (or
+  # reads) whose MAPQ, the lower of the two mates for a pair, is >= min_mapq:
+  # bowtie2 gives 0 or 1 to a read that fits two places equally, including
+  # one place in each genome. Removed counts every one.
+  host_genome_counts:
+    min_mapq: 10
+
   # ── 2  ASSEMBLY ────────────────────────────────────────────────────────────
 
   metaspades:
