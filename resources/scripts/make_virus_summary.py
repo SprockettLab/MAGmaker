@@ -20,9 +20,17 @@ Rules, each verified against real output (WF30, 2026-11-11):
   geNomad       first whitespace token, then cut at '|'. Excised proviruses
                 carry |provirus_<start>_<end> on the name itself, so without
                 the cut no provirus ever joins.
-  VIBRANT       first whitespace token. It appends _fragment_N to the END of
-                the whole header, after len=, NOT to the contig name, so
-                splitting on '_' mangles it.
+  VIBRANT       first whitespace token, then a trailing _fragment_N removed.
+                VIBRANT appends _fragment_N to the END of the whole header.
+                On MEGAHIT headers (k141_7 flag=1 multi=4.0 len=9000) that is
+                after len=, so the first token is already the contig. On
+                headers with no space (metaSPAdes NODE_..., flye contig_...,
+                myloasm) it lands on the contig name itself: without the cut,
+                WF18 left 1,528 of 66,546 metaSPAdes, 941 of 2,562 flye and
+                1,061 of 2,508 myloasm VIBRANT calls on names not in the
+                assembly. The suffix is cut only when what remains is a
+                contig of the assembly (or the contig list is unavailable),
+                so a real contig name ending in _fragment_N is kept.
   Cenote-Taker3 the first token of the input_name column of its own
                 virus_summary.tsv. Its FASTA headers (ct3_99@C3) are renamed
                 beyond recovery and are never parsed.
@@ -133,6 +141,21 @@ def map_vibrant(name):
     # First whitespace token only. _fragment_N is appended after len=, at the
     # end of the header, so splitting on '_' would mangle the contig name.
     return first_token(name)
+
+
+VIBRANT_FRAGMENT = re.compile(r'_fragment_\d+$')
+
+
+def vibrant_source(name, contigs):
+    """VIBRANT's provirus pieces end in _fragment_N; on a header with no space
+    that suffix is part of the first token. Cut it when the name is not a
+    contig and the cut name is one (or the contig list is unavailable)."""
+    if contigs and name in contigs:
+        return name
+    base = VIBRANT_FRAGMENT.sub('', name)
+    if base != name and (not contigs or base in contigs):
+        return base
+    return name
 
 
 def map_virsorter2(name):
@@ -378,6 +401,8 @@ def other_rows(predictor, sample, assembler, row, stem, contigs):
             source = map_vibrant(ct3_names.get(own, ''))
         else:
             source = MAPPERS[predictor](header)
+            if predictor == 'vibrant':
+                source = vibrant_source(source, contigs)
         if source:
             mapped += 1
             if contigs and source not in contigs:
