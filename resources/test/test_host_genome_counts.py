@@ -285,9 +285,123 @@ def part2():
               "sampling\tnone" in open(params).read())
 
 
+FASTP_STANDIN = """#!/bin/sh
+# Pass-through stand-in for fastp: copies the reads, writes empty reports.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --in1) IN1=$2; shift;; --in2) IN2=$2; shift;;
+    --out1) OUT1=$2; shift;; --out2) OUT2=$2; shift;;
+    --json) JSON=$2; shift;; --html) HTML=$2; shift;;
+  esac
+  shift
+done
+cp "$IN1" "$OUT1"; [ -n "$IN2" ] && cp "$IN2" "$OUT2"
+echo '{}' > "$JSON"; echo '<html></html>' > "$HTML"
+"""
+
+
+def part3():
+    """The real rules, through Snakemake: BoarderCollie joins two genomes
+    (download_only, local FASTAs, no network), host_filter and
+    host_filter_se run bowtie2, and host_genome_counts splits the result.
+    Needs BOARDERCOLLIE_DIR, snakemake, bowtie2 and samtools on PATH."""
+    bc_dir = os.environ.get("BOARDERCOLLIE_DIR")
+    tools = all(shutil.which(t) for t in ("snakemake", "bowtie2", "samtools"))
+    if not (bc_dir and tools):
+        print("SKIP  part 3: needs BOARDERCOLLIE_DIR, and snakemake, bowtie2 "
+              "and samtools on PATH")
+        return
+    import gzip
+    import yaml
+    rng = random.Random(23)
+    tmp = tempfile.mkdtemp(prefix="magmaker_hgc_")
+    ga, gb, other = (rand_seq(rng, n) for n in (20000, 8000, 20000))
+    fa, fb = os.path.join(tmp, "A.fna"), os.path.join(tmp, "B.fna")
+    open(fa, "w").write(f">chrA1\n{ga[:12000]}\n>chrA2\n{ga[12000:]}\n")
+    open(fb, "w").write(f">chrB1\n{gb}\n")
+
+    def reads(spec, paired):
+        r1, r2, n = [], [], 0
+        for src, k in spec:
+            for _ in range(k):
+                start = rng.randrange(0, len(src) - 400)
+                frag = src[start:start + 300]
+                n += 1
+                r1.append(f"@r{n}\n{frag[:100]}\n+\n{'I' * 100}\n")
+                r2.append(f"@r{n}\n{revcomp(frag)[:100]}\n+\n{'I' * 100}\n")
+        return r1, r2
+
+    spec = [(ga[:11500], 150), (ga[12000:19500], 150), (gb, 120), (other, 200)]
+    p1, p2 = reads(spec, True)
+    s1, _ = reads([(ga[:11500], 60), (gb, 50), (other, 80)], False)
+    paths = {}
+    for name, recs in (("P_R1", p1), ("P_R2", p2), ("S_R1", s1)):
+        paths[name] = os.path.join(tmp, name + ".fastq.gz")
+        with gzip.open(paths[name], "wt") as fh:
+            fh.write("".join(recs))
+    meta = os.path.join(tmp, "metadata.txt")
+    with open(meta, "w") as fh:
+        fh.write("Sample\tSequencing_Run\tPlatform\tR1_fp\tR2_fp\n"
+                 f"PE1\tRun_1\tillumina\t{paths['P_R1']}\t{paths['P_R2']}\n"
+                 f"SE1\tRun_1\tillumina\t{paths['S_R1']}\tNA\n")
+    over = os.path.join(tmp, "over.yaml")
+    yaml.safe_dump({
+        "metadata": meta,
+        "host_filter": {"boardercollie": True, "boardercollie_dir": bc_dir},
+        "boardercollie": {
+            "library_dir": os.path.join(tmp, "lib"),
+            "index_dir": os.path.join(tmp, "idx"),
+            "work_dir": os.path.join(tmp, "work"),
+            "hosts": [{"name": "H", "ladder": [],
+                       "genomes": [{"fasta": fa, "tax_id": 9606},
+                                   {"fasta": fb, "tax_id": 5850}]}],
+            "settings": {"download_only": True}},
+    }, open(over, "w"))
+    bindir = os.path.join(tmp, "bin")
+    os.makedirs(bindir)
+    with open(os.path.join(bindir, "fastp"), "w") as fh:
+        fh.write(FASTP_STANDIN)
+    os.chmod(os.path.join(bindir, "fastp"), 0o755)
+    env = {**os.environ, "BOARDERCOLLIE_RUN_ID": "test",
+           "PATH": bindir + os.pathsep + os.environ["PATH"]}
+    target = os.path.join("output", "qc", "host_filter",
+                          "host_genome_counts.tsv")
+    run = subprocess.run(
+        ["snakemake", "-s", os.path.join(REPO_ROOT, "Snakefile"),
+         "--configfile", os.path.join(REPO_ROOT, "config.yaml"), over,
+         "--cores", "2", "-d", tmp, target],
+        env=env, capture_output=True, text=True)
+    ok = run.returncode == 0
+    check("snakemake: host_genome_counts.tsv built through the real rules", ok)
+    if not ok:
+        print((run.stdout + run.stderr)[-4000:])
+        print(f"      (left in {tmp})")
+        return
+    rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(tmp, target))]
+    col = {c: i for i, c in enumerate(rows[0])}
+    got = {(r[col["Sample"]], r[col["Unit"]]): {} for r in rows[1:]}
+    for r in rows[1:]:
+        got[(r[col["Sample"]], r[col["Unit"]])][r[col["Genome"]]] = (
+            int(r[col["Removed"]]), int(r[col["Input"]]))
+    print(f"      counted {got}")
+    members = [l.split("\t")[0] for l in
+               open(os.path.join(tmp, "output", "qc", "host_reference",
+                                 "H.fna.members.tsv")).read().splitlines()[1:]]
+    a_id, b_id = members
+    check("snakemake: PE sample, pairs credited to their true genome, of 620",
+          got.get(("PE1", "pairs")) == {a_id: (300, 620), b_id: (120, 620)})
+    check("snakemake: SE sample, reads credited to their true genome, of 190",
+          got.get(("SE1", "reads")) == {a_id: (60, 190), b_id: (50, 190)})
+    check("snakemake: parameters file written",
+          os.path.exists(os.path.join(tmp, "output", "qc", "host_filter",
+                                      "host_genome_counts_params.txt")))
+    shutil.rmtree(tmp)
+
+
 def main():
     part1()
     part2()
+    part3()
     print()
     if FAILURES:
         print(f"{len(FAILURES)} FAILED")
