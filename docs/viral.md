@@ -190,16 +190,22 @@ tool-specific name**: `virus_summary.tsv` carries `Predictor` and
 | Predictor | File read | Rule |
 |---|---|---|
 | geNomad | `<stem>_virus.fna` | first whitespace token, then cut at `\|` (which strips `\|provirus_<start>_<end>`) |
-| VIBRANT | `<stem>.phages_combined.fna` | first whitespace token |
+| VIBRANT | `<stem>.phages_combined.fna` | first whitespace token, then a trailing `_fragment_<N>` cut when the rest is a contig |
 | Cenote-Taker3 | `ct3_virus_summary.tsv` | first token of `input_name` |
 | VirSorter2 | `final-viral-combined.fa` | cut at `\|\|`, then first whitespace token |
 
 The traps each rule exists for:
 
-- **VIBRANT** appends `_fragment_1` to the END of the header, after `len=`,
-  not to the contig name:
-  `>k141_10643 flag=0 multi=22.9958 len=231935_fragment_1`. Splitting on `_`
-  mangles it.
+- **VIBRANT** appends `_fragment_1` to the END of the header. On a MEGAHIT
+  header that is after `len=`, not on the contig name:
+  `>k141_10643 flag=0 multi=22.9958 len=231935_fragment_1`, so splitting on
+  `_` mangles it. On a header with no space (metaSPAdes `NODE_...`, flye,
+  myloasm) the suffix lands on the contig name itself
+  (`>NODE_28_length_155112_cov_28.036754_fragment_5`), so it is cut, but only
+  when what remains is a contig of the assembly. Before this, WF18 left 1,528
+  of 66,546 metaSPAdes, 941 of 2,562 flye and 1,061 of 2,508 myloasm VIBRANT
+  calls on names that are not contigs (counted as `Not_In_Assembly` in
+  `virus_name_mapping.tsv`), which also blanked `Assembler_Circular` for them.
 - **Cenote-Taker3** renames beyond recovery (`>ct3_99@C3`), so its FASTA
   headers are never parsed; the join goes through its own summary table,
   which carries both its name and the full original header.
