@@ -35,6 +35,11 @@ fastp's adapter and homopolymer trimming are made explicit
 rather than left to its header-dependent defaults, which do less than expected
 on archived/SRA data. See [Configuration](configuration.md).
 
+The host BAM is then split by member genome of the host reference
+(`host_genome_counts`), so a host that joins several genomes, such as a primate
+and a parasite, reports each genome's reads separately in
+`output/qc/host_filter/host_genome_counts.tsv`. See [Output](output.md).
+
 The host-filtered non-host reads are the input to everything downstream:
 assembly, profiling, prototype selection, mapping, and CMSeq.
 

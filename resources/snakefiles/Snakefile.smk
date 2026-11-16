@@ -20,6 +20,7 @@ wildcard_constraints:
     seqrun=r"[^/]+"
 
 include: "resources/snakefiles/qc.smk"
+include: "resources/snakefiles/host_genome_counts.smk"
 include: "resources/snakefiles/long_reads.smk"
 include: "resources/snakefiles/assemble.smk"
 include: "resources/snakefiles/prototype_selection.smk"
@@ -62,6 +63,7 @@ rule all:
     input:
         *long_read_targets,
         "output/qc/multiqc/multiqc.html",
+        "output/qc/host_filter/host_genome_counts.tsv",
         "output/assemble/multiqc_assemble/multiqc.html",
         "output/prototype_selection/sourmash_plot",
         "output/prototype_selection/prototype_selection/selected_prototypes.yaml",

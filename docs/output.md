@@ -10,6 +10,7 @@ output/
 │   ├── fastqc_pre_trim/ fastqc_post_trim/ fastqc_post_host/   per-(sample,run,read) FastQC reports
 │   ├── fastp/                            fastp JSON + HTML reports (single-end reports under fastp/se/)
 │   ├── host_filter/nonhost/              host-filtered FASTQ files (input to everything downstream)
+│   ├── host_filter/host_genome_counts.tsv   host reads per member genome (see below), with _params.txt
 │   ├── host_filter_ont/                  long reads: nonhost/{sample}.ont.fastq.gz, host/ (BAM, IDs), {sample}.counts.tsv
 │   └── multiqc/multiqc.html             combined QC report
 │
@@ -136,6 +137,34 @@ they do not affect `renamed_mags/`. Filter them out with
 The most common cause is an assembly too fragmented to bin. SemiBin2 needs a
 contig of at least 4000 bp to form must-link pairs, and MetaBAT2, MaxBin2
 and CONCOCT have their own minimum-length and marker-gene requirements.
+
+---
+
+## Host genome counts
+
+`output/qc/host_filter/host_genome_counts.tsv`: one row per sample per member genome of the host reference.
+A BoarderCollie host can join several genomes, for example a macaque and the *Plasmodium* it was infected with.
+`host_filter` removes reads that hit any of them; this table says how many came from each.
+It is made from the host BAM `host_filter` keeps, so nothing is mapped again, and every record is read.
+`host_genome_counts_params.txt` beside it records the host, reference, `members.tsv` and its md5, and `min_mapq`.
+
+| Column | Meaning |
+|---|---|
+| `Sample`, `Layout` | sample, and `PE` or `SE` |
+| `Unit` | `pairs` (PE) or `reads` (SE): the unit of every count in the row |
+| `Member` | a member of the host reference (a genome accession, or a mitochondrion added to one) |
+| `Genome` | the genome the member belongs to: itself, or for an added mitochondrion its genome |
+| `Input` | pairs or reads given to bowtie2, from its summary in the host_filter log |
+| `Removed` | pairs bowtie2 aligned concordantly (PE), or reads it aligned (SE), credited to the member holding mate 1: exactly what host_filter removed |
+| `Removed_Fraction` | `Removed / Input` |
+| `Min_MAPQ` | the MAPQ cutoff used for `Removed_Confident` (`params.host_genome_counts.min_mapq`, default 10) |
+| `Removed_Confident` | removed units whose MAPQ (the lower mate's, for pairs) is at least `Min_MAPQ`. bowtie2 gives MAPQ 0 or 1 to a read that fits two places equally well, including one in each genome |
+| `Mates_Aligned_Not_Removed` | PE only: aligned mates whose pair did not align concordantly. These stayed in the nonhost reads, so they reached assembly |
+
+A member with no reads still has a row, with zeros.
+Per sample, the `Removed` total must equal bowtie2's own summary, and the BAM's sequence names must equal the reference's; either mismatch fails the job.
+With a host FASTA not made by BoarderCollie (`host_filter.boardercollie: false`) there is one member, named after the FASTA.
+Long reads (`Platform ont`) are not in this table; their counts are in `host_filter_ont/{sample}.counts.tsv`.
 
 ---
 
