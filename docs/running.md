@@ -37,7 +37,7 @@ The `run_magmaker.sh` wrapper at the repository root chains all three stages aut
 
 1. Runs the main pipeline (`snakemake "$@"`)
 2. Runs `generate_binning_config` to produce `output/config/auto_binning.txt`
-3. Runs the binning pipeline through `rename_mags`, and the viral / plasmid track (`snakemake --snakefile Snakefile-bin rename_mags virus_all "$@" --config binning=output/config/auto_binning.txt`; `virus_all` is left out with `--skip-virus`)
+3. Runs the binning pipeline through `rename_mags`, the viral / plasmid track and, when switched on, ISEScan (`snakemake --snakefile Snakefile-bin rename_mags virus_all isescan_all "$@" --config binning=output/config/auto_binning.txt`; `virus_all` is left out with `--skip-virus`)
 
 **Dry-run behavior:** On a dry run (`-n`), stages 1 and 2 print their DAGs but `auto_binning.txt` is never written (nothing executes). Stage 3 requires `auto_binning.txt` to exist before Snakemake can parse `Snakefile-bin`, so the wrapper detects the missing file and prints a message instead of crashing. Run without `-n` to actually execute stages 1 and 2 first; subsequent runs (including further dry runs) will find the file and show the full stage 3 DAG.
 
@@ -55,6 +55,7 @@ for one run, without editing a tracked file:
 | `--skip-kraken` | drop the Kraken2 / Bracken targets for this run |
 | `--skip-metaphlan` | drop the MetaPhlAn target for this run |
 | `--skip-virus` | leave the viral / plasmid track (`virus_all`) out of Stage 3 |
+| `--isescan` | run ISEScan (insertion sequences) in Stage 3 for this run; see [Insertion sequences](isescan.md) |
 | `--virus-predictors=genomad,vibrant` | which viral predictors run, overriding the `virus:` switches |
 | `--skip-vrhyme` | no viral binning; the predictors still run |
 | `--skip-cmseq` | skip CMSeq strain heterogeneity; the two SH columns in `mag_summary.tsv` become `NA` |
@@ -235,6 +236,7 @@ SLURM job logs go to `.snakemake/slurm_logs/{rule}/`. Rule-level logs (tool stde
 | `make_mag_summary` | CheckM2 + GUNC + GTDB-Tk + CMSeq + combined summary table |
 | `rename_mags` | Copy MAGs to `renamed_mags/` using names from `mag_summary.tsv` |
 | `virus_all` | viral predictors + CheckV + vRhyme → `virus_summary.tsv` (independent of the MAG track) |
+| `isescan_all` | ISEScan on every assembly → `isescan/isescan_summary.tsv` (needs `isescan: true` or `--isescan`; waits for `mag_summary.tsv`) |
 
 ---
 

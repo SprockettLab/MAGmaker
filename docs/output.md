@@ -56,6 +56,10 @@ output/
 │   ├── vrhyme_membership.tsv           one row per contig, naming its vMAG
 │   └── virus_summary.tsv               merged per-sample viral + plasmid table
 │
+├── isescan/                            (binning pipeline, isescan_all; off by default)
+│   ├── {assembler}/{sample}/is.tsv     ISEScan's table per assembly (+ run/, params.txt)
+│   └── isescan_summary.tsv             every IS copy, labelled with sample and MAG
+│
 └── mag_qc/                             (binning pipeline)
     ├── checkm2/{mapper}/{sample}/      CheckM2 quality reports
     ├── gunc/{mapper}/{sample}/         GUNC chimera detection results

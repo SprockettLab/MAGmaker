@@ -82,6 +82,7 @@ See the documentation below for details on each step.
 | [Running the pipeline](docs/running.md) | Local, HPC/SLURM, `run_magmaker.sh` wrapper, per-run flags, stage-by-stage |
 | [Output](docs/output.md) | Directory layout, MAG summary table, renaming workflow, GTDB-Tk stages |
 | [Viral / plasmid track](docs/viral.md) | viral predictors, CheckV, vRhyme; `virus_summary.tsv` |
+| [Insertion sequences](docs/isescan.md) | ISEScan on every assembly, calls labelled by MAG; `isescan_summary.tsv` (off by default) |
 | [Running on DEMON (WFUSM)](docs/demon.md) | DEMON cluster setup, pre-configured databases and environments |
 
 ---

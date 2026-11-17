@@ -485,6 +485,11 @@ params:
   virsorter2:
     env: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/virsorter2-2.2.4-single"
     db_dir: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/dbs/virsorter2/db"
+  # ISEScan: extra command-line options, e.g. "--removeShortIS" to report
+  # only complete IS elements (default: complete and partial, with a type
+  # column saying which).
+  isescan:
+    extra: ""
   vrhyme:
     env: "/isilon/datalake/sprockett_lab/original/WF00SprockettLab/envs/vrhyme-1.1.0"
     # vRhyme's floor; upstream states it cannot be lowered.
@@ -570,6 +575,13 @@ virus:
   cenotetaker3: false
   virsorter2: false
 
+# ═════════════════════════════════════════════════════════════════════════════
+# INSERTION SEQUENCES (stage 3; off unless isescan: true or --isescan)
+# ═════════════════════════════════════════════════════════════════════════════
+# ISEScan on every contig of each binning row's own assembly, each call
+# labelled with its MAG. Writes output/isescan/isescan_summary.tsv.
+# Linux only. See docs/isescan.md.
+isescan: false
 
 host_filter:
   boardercollie: true
@@ -646,6 +658,8 @@ threads:
   cenotetaker3: 16
   virsorter2: 16
   vrhyme: 16
+  # 9  insertion sequences
+  isescan: 32
 
 
 # ═════════════════════════════════════════════════════════════════════════════
