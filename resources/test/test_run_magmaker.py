@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Checks that run_magmaker.sh runs the viral / plasmid track by default.
 
-Stage 3 asks for rename_mags and virus_all (geNomad, CheckV,
-virus_summary.tsv); --skip-virus drops virus_all for that run only.
+Stage 3 asks for rename_mags, virus_all (geNomad, CheckV,
+virus_summary.tsv) and isescan_all (empty unless ISEScan is on);
+--skip-virus drops virus_all for that run only, and --isescan turns ISEScan
+on for that run only.
 
 1. The wrapper's Snakemake command lines, recorded by a stand-in `snakemake`
    on PATH: stage 3 names both targets by default, only rename_mags with
@@ -74,17 +76,24 @@ def stage3_targets(call):
 def test_wrapper_targets():
     calls = wrapper_calls()
     assert len(calls) == 3, calls
-    assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all'], calls[2]
+    assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all', 'isescan_all'], calls[2]
     assert 'virus_all' not in calls[0] and 'virus_all' not in calls[1]
+    assert 'isescan=True' not in calls[2], calls[2]
+
+    # --isescan is a config override for stage 3, not a target.
+    calls = wrapper_calls('--isescan')
+    assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all', 'isescan_all'], calls[2]
+    assert 'isescan=True' in calls[2], calls[2]
+    assert all('--isescan' not in c for c in calls), calls
 
     # The viral predictor flags become config overrides, not targets.
     calls = wrapper_calls('--virus-predictors=genomad,vibrant', '--skip-vrhyme')
-    assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all'], calls[2]
+    assert stage3_targets(calls[2]) == ['rename_mags', 'virus_all', 'isescan_all'], calls[2]
     assert 'virus_predictors=[genomad,vibrant]' in calls[2], calls[2]
     assert 'skip_vrhyme=True' in calls[2], calls[2]
 
     calls = wrapper_calls('--skip-virus', '--skip-cmseq')
-    assert stage3_targets(calls[2]) == ['rename_mags'], calls[2]
+    assert stage3_targets(calls[2]) == ['rename_mags', 'isescan_all'], calls[2]
     # --skip-virus is consumed by the wrapper, never passed to Snakemake,
     # and the other overrides still reach stage 3 in its one --config.
     assert all('--skip-virus' not in c for c in calls), calls

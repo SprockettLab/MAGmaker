@@ -42,6 +42,7 @@ nav:
   - Running the pipeline: running.md
   - Output: output.md
   - Viral / plasmid track: viral.md
+  - Insertion sequences: isescan.md
   - Running on DEMON (WFUSM): demon.md
 
 markdown_extensions:

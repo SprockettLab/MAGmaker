@@ -49,6 +49,7 @@ environments are pre-configured.
 | [Running the pipeline](running.md) | Local, HPC/SLURM, `run_magmaker.sh`, per-run flags, stage-by-stage |
 | [Output](output.md) | Directory layout, MAG summary table, renaming workflow, GTDB-Tk stages |
 | [Viral / plasmid track](viral.md) | viral predictors, CheckV, vRhyme; `virus_summary.tsv` |
+| [Insertion sequences](isescan.md) | ISEScan on every assembly, calls labelled by MAG; `isescan_summary.tsv` (off by default) |
 | [Running on DEMON (WFUSM)](demon.md) | DEMON cluster setup, pre-configured databases and environments |
 
 ---

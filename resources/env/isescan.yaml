@@ -1,0 +1,11 @@
+# ISEScan: insertion sequence (IS) elements in prokaryotic sequence.
+# Linux only (its FragGeneScan build); the profile HMMs ship inside the
+# package, so there is no database to download.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # Floor at the current release, bound left open so runs pick up later
+  # releases. The version a run used is written into each output folder's
+  # params.txt, because it is decided when the env is first built.
+  - isescan>=1.7.3

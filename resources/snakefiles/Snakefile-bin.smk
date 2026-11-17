@@ -119,6 +119,7 @@ include: "resources/snakefiles/selected_bins.smk"
 include: "resources/snakefiles/cmseq.smk"
 include: "resources/snakefiles/mag_qc.smk"
 include: "resources/snakefiles/virus.smk"
+include: "resources/snakefiles/isescan.smk"
 include: "resources/snakefiles/long_read_binning.smk"
 
 

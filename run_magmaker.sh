@@ -76,14 +76,18 @@ PASSTHRU=()
 # is a Stage 3 target next to rename_mags, so a full run is the full
 # pipeline. It reads only the assemblies and touches nothing in the MAG
 # track. --skip-virus drops it for this run only.
-STAGE3_TARGETS=(rename_mags virus_all)
+STAGE3_TARGETS=(rename_mags virus_all isescan_all)
 for arg in "$@"; do
     case "${arg}" in
         --skip-kraken)    SKIP_CONFIG+=("skip_kraken=True") ;;
         --skip-metaphlan) SKIP_CONFIG+=("skip_metaphlan=True") ;;
         --skip-cmseq)     SKIP_CONFIG+=("skip_cmseq=True") ;;
         --skip-vsc)       SKIP_CONFIG+=("skip_vsc=True") ;;
-        --skip-virus)     STAGE3_TARGETS=(rename_mags) ;;
+        --skip-virus)     STAGE3_TARGETS=(rename_mags isescan_all) ;;
+        # Insertion sequences (ISEScan) are off unless `isescan: true` is in
+        # the config; this turns them on for this run only. isescan_all is
+        # always a Stage 3 target and asks for nothing while they are off.
+        --isescan)        SKIP_CONFIG+=("isescan=True") ;;
         # Which viral predictors run, overriding the `virus:` switches for
         # this run only, and whether vRhyme bins geNomad's calls. Written
         # with = for the same reason as --binners: the argument loop stays a
@@ -209,5 +213,6 @@ else
     if [[ " ${STAGE3_TARGETS[*]} " == *" virus_all "* ]]; then
         echo " Viral / plasmid: output/virus/virus_summary.tsv"
     fi
+    echo " Insertion sequences (if on): output/isescan/isescan_summary.tsv"
     echo "========================================"
 fi
