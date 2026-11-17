@@ -91,6 +91,12 @@ rule host_genome_counts:
         contig_map=rules.host_contig_map.output
     output:
         HOST_GENOME_COUNTS_DIR + "/{sample}.tsv"
+    # host_contig_map.tsv is in the same folder, so without this it matches
+    # {sample}.tsv. A cluster job re-plans with only this rule allowed, takes
+    # sample=host_contig_map for the map's producer, and fails in host_bam
+    # with KeyError 'host_contig_map' (every sample, 2026-11-16).
+    wildcard_constraints:
+        sample=r"(?!host_contig_map\.tsv$)[^/]+"
     params:
         script=HOST_GENOME_COUNTS_SCRIPT,
         layout=lambda wildcards: "SE" if is_single_end(wildcards.sample) else "PE",

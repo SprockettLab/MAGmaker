@@ -395,6 +395,24 @@ def part3():
     check("snakemake: parameters file written",
           os.path.exists(os.path.join(tmp, "output", "qc", "host_filter",
                                       "host_genome_counts_params.txt")))
+    # A SLURM job re-plans its one step with only that rule allowed. The
+    # contig map sits beside the per-sample tables, so it must not be taken
+    # for a sample's output (it was: KeyError 'host_contig_map', 2026-11-16,
+    # every sample of every WF17 arm).
+    one = subprocess.run(
+        ["snakemake", "-s", os.path.join(REPO_ROOT, "Snakefile"),
+         "--configfile", os.path.join(REPO_ROOT, "config.yaml"), over,
+         "--cores", "1", "-d", tmp, "--target-jobs",
+         "host_genome_counts:sample=PE1", "--allowed-rules",
+         "host_genome_counts", "--force", "--nolock"],
+        env=env, capture_output=True, text=True)
+    out = one.stdout + one.stderr
+    check("snakemake: one sample re-run as a SLURM job runs it (only "
+          "host_genome_counts allowed)", one.returncode == 0)
+    check("snakemake: that job does not read the contig map as a sample",
+          "host_contig_map'" not in out and "KeyError" not in out)
+    if one.returncode != 0:
+        print(out[-3000:])
     shutil.rmtree(tmp)
 
 
