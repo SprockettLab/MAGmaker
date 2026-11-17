@@ -40,6 +40,7 @@ import sys
 FLAG_PAIRED = 0x1
 FLAG_PROPER = 0x2
 FLAG_UNMAPPED = 0x4
+FLAG_MATE_UNMAPPED = 0x8
 FLAG_READ1 = 0x40
 FLAG_READ2 = 0x80
 FLAG_SECONDARY = 0x100
@@ -203,7 +204,10 @@ def count(stream, layout, contig_member, members, min_mapq):
     PE records come in mate pairs, mate 1 then mate 2 (bowtie2's order,
     unsorted, as host_filter writes it). A pair is removed when both mates
     carry the proper-pair flag, bowtie2's mark of a concordant alignment;
-    it is confident when the lower of the two MAPQs reaches min_mapq."""
+    it is confident when the lower of the two MAPQs reaches min_mapq.
+    With --no-unal, bowtie2 leaves out the record of a mate that did not
+    align, so a pair with one aligned mate is one record: aligned, flagged
+    mate-unmapped, never proper. It counts as an aligned mate not removed."""
     tally = {m: {"removed": 0, "confident": 0, "mates": 0} for m in members}
     sq = set()
 
@@ -228,10 +232,29 @@ def count(stream, layout, contig_member, members, min_mapq):
                 t["confident"] += 1
         return tally, sq
 
-    for first in records:
+    def lone(rec):
+        """A record whose mate's record bowtie2 left out (--no-unal)."""
+        q, f, r, _ = rec
+        if f & FLAG_UNMAPPED or not f & FLAG_MATE_UNMAPPED or f & FLAG_PROPER:
+            raise ValueError(
+                f"read {q} (flag {f}) has no mate record next to it, but is "
+                "not an aligned mate of an unaligned one; the BAM must be "
+                "bowtie2's unsorted output, as host_filter writes it")
+        tally[member_of(r, q)]["mates"] += 1
+
+    pending = None
+    while True:
+        first = pending if pending is not None else next(records, None)
+        pending = None
+        if first is None:
+            break
+        if not first[1] & FLAG_PAIRED:
+            raise ValueError(f"read {first[0]} is unpaired in a paired-end BAM")
         second = next(records, None)
-        if second is None:
-            raise ValueError(f"read {first[0]}: mate missing at end of BAM")
+        if second is None or second[0] != first[0]:
+            lone(first)
+            pending = second
+            continue
         q1, f1, r1, mq1 = first
         q2, f2, r2, mq2 = second
         if q1 != q2 or not (f1 & FLAG_READ1 and f2 & FLAG_READ2):

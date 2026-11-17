@@ -91,6 +91,20 @@ def part1():
                                    + rec("y", 0x1 | 0x80 | 0x2, "a1"))))
     check("a lone last record fails",
           raises(lambda: run_count(rec("x", 0x1 | 0x40 | 0x2, "a1"))))
+    # --no-unal leaves out the record of a mate that did not align: a pair
+    # with one aligned mate is a single record, flagged mate-unmapped (0x8).
+    tally, _ = run_count(pair("p1", "a1") + rec("l1", 0x1 | 0x40 | 0x8, "b1")
+                         + rec("l2", 0x1 | 0x80 | 0x8 | 0x10, "a1")
+                         + pair("p2", "b1"))
+    check("lone aligned mate (its unaligned mate left out) counted as a mate "
+          "not removed", [tally[m]["removed"] for m in MEMBERS] == [1, 1, 0]
+          and [tally[m]["mates"] for m in MEMBERS] == [1, 1, 0])
+    check("a lone record without the mate-unmapped flag fails",
+          raises(lambda: run_count(rec("x", 0x1 | 0x40, "a1")
+                                   + pair("y", "a1"))))
+    check("a lone proper-pair record fails",
+          raises(lambda: run_count(rec("x", 0x1 | 0x40 | 0x2 | 0x8, "a1")
+                                   + pair("y", "a1"))))
     check("a secondary record fails",
           raises(lambda: run_count(rec("x", 0x1 | 0x40 | 0x100, "a1"))))
     check("a sequence missing from the map fails",
@@ -209,6 +223,14 @@ def part2():
         add(gb, truth["GCA_B"])
         add(mt, truth["NC_MT"])
         add(other, 200)
+        # 50 pairs with mate 1 from A and mate 2 from sequence in neither:
+        # one mate aligns, so --no-unal writes one record for the pair.
+        for _ in range(50):
+            s1 = rng.randrange(0, 11000)
+            s2 = rng.randrange(0, len(other) - 400)
+            n += 1
+            r1.append(f"@r{n}\n{ga[s1:s1 + 100]}\n+\n{'I' * 100}\n")
+            r2.append(f"@r{n}\n{revcomp(other[s2:s2 + 300])[:100]}\n+\n{'I' * 100}\n")
         q1, q2 = os.path.join(d, "R1.fq"), os.path.join(d, "R2.fq")
         open(q1, "w").write("".join(r1))
         open(q2, "w").write("".join(r2))
@@ -249,8 +271,19 @@ def part2():
         print(f"      truth {truth}  counted {got}")
         check("real bowtie2 run: every pair credited to its true genome",
               got == truth)
-        check("real bowtie2 run: Input is all 660 pairs",
-              all(r[col["Input"]] == "660" for r in rows[1:]))
+        check("real bowtie2 run: Input is all 710 pairs",
+              all(r[col["Input"]] == "710" for r in rows[1:]))
+        lone = int(subprocess.run(
+            ["samtools", "view", "-c", "-f", "8", "-F", "4", bam],
+            capture_output=True, text=True).stdout)
+        mates = {r[col["Member"]]: int(r[col["Mates_Aligned_Not_Removed"]])
+                 for r in rows[1:]}
+        print(f"      records with an unaligned, left-out mate: {lone}; "
+              f"mates not removed {mates}")
+        check("real bowtie2 run: the BAM has one-record pairs (the case "
+              "that failed on demon)", lone >= 40)
+        check("real bowtie2 run: each one-record pair counted as A's aligned "
+              "mate", mates["GCA_A"] >= lone)
         check("real bowtie2 run: mitochondrion rolls up to its genome",
               [r[col["Genome"]] for r in rows[1:]
                if r[col["Member"]] == "NC_MT"] == ["GCA_B"])
