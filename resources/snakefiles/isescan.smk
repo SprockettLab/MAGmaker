@@ -74,6 +74,23 @@ rule run_isescan:
         # proteome/ and hmm/ (gene calls and raw HMM hits, the bulk of the
         # output) are removed after a successful run.
         """
+            # isescan.py is `#!/usr/bin/env python3`, so PATH decides which
+            # python runs it, and on demon another environment reaches these
+            # jobs ahead of the rule's own. All 88 samples of WF18
+            # Sprockett_2026_metaSPAdes failed this way on 2026-11-18:
+            # python3.13 from the Snakemake environment executed ISEScan's
+            # modules, and `cdll.LoadLibrary('libssw.so')` resolves through
+            # the RUNPATH of the running interpreter, so it searched that
+            # environment's lib/ and died on
+            #   OSError: libssw.so: cannot open shared object file
+            # while this rule's own env had both python3.15 and lib/libssw.so.
+            # $CONDA_PREFIX is set by Snakemake's conda activation for this
+            # exact rule, so putting its bin first pins both the interpreter
+            # and the library to the env built for this rule.
+            # Same failure shape as the run_maxbin2 perl and run_gtdbtk skani
+            # fixes; see mag_qc.smk.
+            export PATH="$CONDA_PREFIX/bin:$PATH"
+
             rm -rf {params.outdir}
             mkdir -p {params.outdir}/run
             contigs=$(realpath {input.contigs})

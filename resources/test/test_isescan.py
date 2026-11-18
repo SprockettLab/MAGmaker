@@ -197,8 +197,27 @@ def test_summary():
         check('the log gives the total with its denominator', 'from 2 of 3 tables' in log)
 
 
+def test_conda_prefix_first():
+    """The rule must put $CONDA_PREFIX/bin ahead of PATH before running
+    ISEScan. Without it, another environment that reaches the job first
+    supplies python3, and ISEScan dies on
+    `OSError: libssw.so: cannot open shared object file` because dlopen
+    resolves through the running interpreter's RUNPATH. This happened to all
+    88 samples of a WF18 run on 2026-11-18. Asserted on the source so a
+    rewrite of the rule cannot drop it silently."""
+    print('PATH guard:')
+    smk = open(os.path.join(REPO_ROOT, 'resources', 'snakefiles',
+                            'isescan.smk')).read()
+    export = 'export PATH="$CONDA_PREFIX/bin:$PATH"'
+    check('run_isescan exports $CONDA_PREFIX/bin onto PATH', export in smk)
+    if export in smk:
+        check('it comes before isescan.py is invoked',
+              smk.index(export) < smk.index('isescan.py --seqfile'))
+
+
 if __name__ == '__main__':
     if '--summary-only' not in sys.argv:
         test_plan()
+    test_conda_prefix_first()
     test_summary()
     print('test_isescan: {0} checks passed'.format(len(CHECKS)))
