@@ -59,6 +59,76 @@ rule metaspades:
         rm -rf {params.temp_dir}
         """
 
+rule metaspades_hybrid:
+    """
+
+    Hybrid assembly: metaSPAdes with the sample's own long reads.
+
+    The short reads are the assembly backbone and the long reads resolve
+    repeats and close gaps inside that graph. This is the OPPOSITE
+    arrangement to the flye and myloasm rules in long_reads.smk, where the
+    contigs are built from the long reads and short reads only correct base
+    errors afterwards.
+
+    The difference matters because the two fail in opposite directions.
+    Long-read assembly needs roughly 20-30x long-read depth; below that it
+    returns fragments. Hybrid needs none, because the assembly stands on the
+    short reads either way, so a sample with very little long-read data has
+    this as its only route to using it. WF18's v2265 has 4,269 long reads,
+    14.9 Mb, which cannot support flye at all.
+
+    Reachable only for samples with Platform ont rows: the input below is the
+    host-filtered long-read FASTQ, which exists for no other sample. Snakemake
+    would refuse to build it for a short-read-only sample, and the target
+    expansion in Snakefile.smk never asks it to.
+
+    Output goes to its own assembler directory, so the hybrid and
+    short-read-only assemblies of one sample both survive and the catalog can
+    choose between them. A flag on rule metaspades would overwrite one with
+    the other.
+
+    """
+    input:
+        fastq1=rules.host_filter.output.nonhost_R1,
+        fastq2=rules.host_filter.output.nonhost_R2,
+        long_reads="output/qc/host_filter_ont/nonhost/{sample}.ont.fastq.gz"
+    output:
+        contigs="output/assemble/metaspades_hybrid/{sample}.contigs.fasta",
+    params:
+        temp_dir=directory("output/{sample}_hybrid_temp/"),
+        extra=config['params']['metaspades']['extra']
+    conda:
+        "../env/assemble.yaml"
+    threads:
+        config['threads']['spades']
+    benchmark:
+        "output/benchmarks/assemble/metaspades_hybrid/{sample}_benchmark.txt"
+    log:
+        "output/logs/assemble/metaspades_hybrid/{sample}.log"
+    retries:
+        config['retries'].get('metaspades_hybrid',
+                              config['retries'].get('metaspades', 2))
+    resources:
+        mem_mb=assembler_mem('metaspades_hybrid'),
+        runtime=runtime_escalate('metaspades_hybrid', base_default=2160)
+    shell:
+        """
+        rm -rf {params.temp_dir}
+        mkdir -p {params.temp_dir}
+        metaspades.py --threads {threads} \
+          -o {params.temp_dir}/ \
+          --memory $(({resources.mem_mb}/1024)) \
+          --pe1-1 {input.fastq1} \
+          --pe1-2 {input.fastq2} \
+          --nanopore {input.long_reads} \
+          {params.extra} \
+          2> {log} 1>&2
+
+        # move and rename the contigs file into a permanent directory
+        mv {params.temp_dir}/contigs.fasta {output.contigs}
+        rm -rf {params.temp_dir}
+        """
+
 rule megahit:
     """
 

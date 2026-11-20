@@ -75,6 +75,22 @@ long_read_assemblers:
   - flye                # metaFlye --meta --nano-hq
   - myloasm
 
+# Hybrid assemblers: short reads as the assembly backbone with the sample's
+# long reads resolving repeats and closing gaps inside that graph. Run for
+# samples with Platform ont rows only, and listed separately from
+# `assemblers` so the hybrid and short-read-only assemblies of the same
+# sample are both kept and can be compared; putting it behind a flag on
+# metaspades would overwrite one with the other.
+#
+# This is NOT the same as the long-read assemblers above. There the contigs
+# are built FROM the long reads and short reads only correct base errors
+# afterwards, which needs roughly 20-30x long-read depth. Hybrid builds from
+# the short reads and works at any long-read depth, so it is the only route
+# by which a sample with very few long reads can use them at all. The two
+# fail in opposite directions, which is why both exist.
+hybrid_assemblers: []
+# - metaspades_hybrid   # metaSPAdes --nanopore; much more RAM than metaspades
+
 biobakery:
   - metaphlan
 
@@ -711,6 +727,19 @@ mem_mb:
   spades: 128000
   spades_min: 32000
   spades_per_mb: 35
+  # Hybrid metaSPAdes (rule metaspades_hybrid). Its own keys because
+  # assembler_mem() reads mem_mb[key] directly and would KeyError on a
+  # missing one, and because hybrid costs more than metaspades: the long
+  # reads are an extra input and SPAdes holds them while resolving the graph.
+  # These are 1.5x the metaSPAdes values, which is a GUESS, not a
+  # measurement: the only hybrid assembly attempted so far is a WF18 test on
+  # one sample with 14.9 Mb of long reads. Re-measure on real runs and
+  # replace these the way the spades values above were derived from 88
+  # samples. input.size_mb here includes the long-read FASTQ, so the per_mb
+  # term already scales with long-read volume.
+  metaspades_hybrid: 192000
+  metaspades_hybrid_min: 48000
+  metaspades_hybrid_per_mb: 35
   multiqc: 32000
   checkm2: 32000
   # GTDB-Tk's memory is dominated by pplacer during classify_wf, which loads
