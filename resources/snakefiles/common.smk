@@ -457,6 +457,13 @@ def binner_of_table(path):
 # circular-contig candidate set.
 LONG_READ_ASSEMBLER_NAMES = ("flye", "myloasm")
 
+# Hybrid assemblers (assemble.smk, rule metaspades_hybrid). Their binning rows
+# are <sample>__<assembler> like a long-read row, but they are binned like a
+# short-read row: prototype short-read coverage only, no long-read coverage
+# track and no circular candidates, so a hybrid row differs from the sample's
+# short-read row in exactly one thing, the assembly.
+HYBRID_ASSEMBLER_NAMES = ("metaspades_hybrid",)
+
 
 def is_long_read_row(row):
     """Overridden in Snakefile-bin, which knows the binning table."""
