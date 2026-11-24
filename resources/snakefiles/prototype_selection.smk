@@ -353,7 +353,8 @@ rule generate_binning_config:
     params:
         n=config['params']['prototypes']['n'],
         assemblers=config['assemblers'],
-        long_read_assemblers=config.get('long_read_assemblers', []) or []
+        long_read_assemblers=config.get('long_read_assemblers', []) or [],
+        hybrid_assemblers=config.get('hybrid_assemblers', []) or []
     log:
         "output/logs/generate_binning_config/generate_binning_config.log"
     run:
@@ -438,6 +439,23 @@ rule generate_binning_config:
         # long-read coverage is added in long_read_binning.smk.
         for sample in long_read_samples:
             for assembler in params.long_read_assemblers:
+                rows.append({
+                    'Sample': f"{sample}{ROW_SEPARATOR}{assembler}",
+                    'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",
+                    'Read_Groups': '',
+                    'Contig_Groups': 'Group1',
+                    'Source_Sample': sample,
+                    'Assembler': assembler,
+                })
+
+        # One row per hybrid assembly (rule metaspades_hybrid), named
+        # <sample>__<assembler>, for every long-read sample: the same samples
+        # its targets expand over in Snakefile.smk. Without these rows the
+        # hybrid assemblies are built and never binned. Binned like a
+        # short-read row (prototype coverage only; is_long_read_row is False
+        # for it), contributing no reads of its own to other assemblies.
+        for sample in long_read_samples:
+            for assembler in params.hybrid_assemblers:
                 rows.append({
                     'Sample': f"{sample}{ROW_SEPARATOR}{assembler}",
                     'Contigs': f"output/assemble/{assembler}/{sample}.contigs.fasta",

@@ -12,11 +12,13 @@
 
 def virus_pairs():
     """(assembler, binning row) pairs the viral track runs on: every configured
-    short-read assembler for a short-read row, as before; a long-read row's
-    own assembler only."""
+    short-read assembler for a short-read row, as before; a long-read or
+    hybrid row's own assembler only. Without the hybrid case a hybrid row
+    would be given every short-read assembler, re-running the sample's
+    megahit contigs under the hybrid row's name and never its own."""
     pairs = []
     for row in contig_pairings:
-        if is_long_read_row(row):
+        if is_long_read_row(row) or assembler_of(row) in HYBRID_ASSEMBLER_NAMES:
             pairs.append((assembler_of(row), row))
         else:
             pairs += [(a, row) for a in config['assemblers']]
