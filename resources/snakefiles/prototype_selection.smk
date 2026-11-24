@@ -436,8 +436,9 @@ rule generate_binning_config:
         # <sample>__<assembler>: binned with the same prototype short-read
         # coverage as every other assembly (Contig_Groups), contributing no
         # reads of its own to other assemblies (empty Read_Groups); its own
-        # long-read coverage is added in long_read_binning.smk.
-        for sample in long_read_samples:
+        # long-read coverage is added in long_read_binning.smk. Samples in
+        # long_read_assembler_exclude have no long-read assembly, so no row.
+        for sample in long_read_assembly_samples:
             for assembler in params.long_read_assemblers:
                 rows.append({
                     'Sample': f"{sample}{ROW_SEPARATOR}{assembler}",

@@ -281,6 +281,37 @@ long_read_samples = [s for s in samples
                      if s in set(long_read_table.index.get_level_values("Sample"))]
 
 
+def _validate_long_read_assembler_exclusions(config, long_read_samples):
+    """Check long_read_assembler_exclude against the long-read samples, at
+    load, so a typo stops the run instead of silently assembling a sample
+    with flye and myloasm that was meant to be skipped."""
+    excluded = config.get("long_read_assembler_exclude") or []
+    if isinstance(excluded, str):
+        _fail("long_read_assembler_exclude must be a list of sample names, "
+              "not a single string. Write it as:\n"
+              "long_read_assembler_exclude:\n  - %s" % excluded)
+    unknown = [e for e in excluded if e not in long_read_samples]
+    if unknown:
+        _fail(
+            "long_read_assembler_exclude names sample(s) with no long reads "
+            "(no Platform ont row):\n"
+            "  %s\n\n"
+            "Samples with long reads:\n  %s"
+            % (", ".join(unknown), ", ".join(long_read_samples) or "none"))
+    return set(excluded)
+
+
+# Long-read samples that flye and myloasm assemble: every long-read sample
+# except those in long_read_assembler_exclude. Excluded samples keep their
+# long-read host removal and their hybrid assembly; only the long-read-first
+# assemblies (and so their binning rows) are skipped. For a sample with too
+# few long reads for flye or myloasm, whose reads hybrid assembly can still use.
+long_read_assembler_exclusions = _validate_long_read_assembler_exclusions(
+    config, long_read_samples)
+long_read_assembly_samples = [s for s in long_read_samples
+                              if s not in long_read_assembler_exclusions]
+
+
 def long_reads_for(sample):
     """in : sample name
        out: its long-read FASTQ paths, one per ont row, in index order"""

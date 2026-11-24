@@ -75,6 +75,14 @@ long_read_assemblers:
   - flye                # metaFlye --meta --nano-hq
   - myloasm
 
+# Long-read samples that flye and myloasm skip. For a sample with too few long
+# reads to assemble on their own (they need roughly 20-30x depth): it keeps its
+# long-read host removal and its hybrid assembly (hybrid_assemblers below), so
+# its long reads are still used, but gets no flye or myloasm assembly and no
+# binning row for one. Names must be samples with Platform ont rows.
+long_read_assembler_exclude: []
+# - v2265
+
 # Hybrid assemblers: short reads as the assembly backbone with the sample's
 # long reads resolving repeats and closing gaps inside that graph. Run for
 # samples with Platform ont rows only, and listed separately from
