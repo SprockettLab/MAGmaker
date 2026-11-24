@@ -58,10 +58,13 @@ metaphlan_targets = (
 # falling back to short-reads-only would produce an assembly identical to the
 # `metaspades` arm under a different name, which would silently corrupt any
 # comparison between the two arms.
+# flye and myloasm skip samples in long_read_assembler_exclude
+# (long_read_assembly_samples); host removal and hybrid assembly do not.
 long_read_targets = (
     expand("output/qc/host_filter_ont/{sample}.counts.tsv", sample=long_read_samples)
     + expand("output/assemble/{assembler}/{sample}.contigs.fasta",
-             assembler=config.get("long_read_assemblers", []) or [], sample=long_read_samples)
+             assembler=config.get("long_read_assemblers", []) or [],
+             sample=long_read_assembly_samples)
     + expand("output/assemble/{assembler}/{sample}.contigs.fasta",
              assembler=config.get("hybrid_assemblers", []) or [], sample=long_read_samples)
 )
