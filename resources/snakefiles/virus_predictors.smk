@@ -218,6 +218,7 @@ rule run_virsorter2:
         # under a scikit-learn the model was not trained with, turning a crash
         # into a silent wrong answer. The check below fails the job instead.
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         rm -rf {params.outdir}
         mkdir -p {params.outdir}
         python -c "import screed, sklearn, sys; v = sklearn.__version__; \
@@ -283,6 +284,7 @@ rule run_checkv_predictor:
         # 2026-11-10, 9 of 90 jobs exited 0 having graded only part of their
         # input, leaving 44,170 of 380,306 contigs with an empty quality.
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         rm -rf {params.outdir}
         mkdir -p {params.outdir}
         python {params.script} {params.fasta} {params.outdir}/input.fna > {log} 2>&1

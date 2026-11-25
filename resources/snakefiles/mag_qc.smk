@@ -463,6 +463,7 @@ rule count_rrna_trna:
         "output/benchmarks/mag_qc/rrna_trna/{mapper}/{contig_sample}.txt"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         python {params.script} --bins-dir {params.bins_dir} --out {output.table} \
             --threads {threads} --min-fraction {params.min_fraction} 2> {log}
         """
