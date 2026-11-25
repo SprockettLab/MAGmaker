@@ -74,6 +74,7 @@ rule host_contig_map:
         "output/logs/qc/host_genome_counts/host_contig_map.log"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         python {params.script} contig-map {params.source} \
           --out {output}.partial 2> {log}
         mv {output}.partial {output}
@@ -115,6 +116,7 @@ rule host_genome_counts:
         "output/benchmarks/qc/host_genome_counts/{sample}_benchmark.txt"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         set -o pipefail
         samtools view -h -@ 1 {input.bam} \
           | python {params.script} count --sample {wildcards.sample} \
@@ -144,6 +146,7 @@ rule merge_host_genome_counts:
         "output/logs/qc/host_genome_counts/merge.log"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         python {params.script} merge --out {output.table} \
           --params {output.params} --host {params.host} \
           --reference {params.reference} {params.members} \

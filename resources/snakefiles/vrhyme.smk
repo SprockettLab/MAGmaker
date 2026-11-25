@@ -84,6 +84,7 @@ rule run_vrhyme:
         # An empty input means geNomad called nothing bin-worthy for this
         # assembly, which is an outcome, not a failure.
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         rm -rf {params.outdir}
         n_in=$(grep -c '^>' {input.fasta} || true)
         if [ "$n_in" -eq 0 ]; then

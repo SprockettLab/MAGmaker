@@ -111,6 +111,7 @@ rule host_filter_ont:
         "output/benchmarks/qc/host_filter_ont/{sample}_benchmark.txt"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         mkdir -p output/qc/host_filter_ont/tmp
         TMP=$(mktemp -d output/qc/host_filter_ont/tmp/{wildcards.sample}.XXXXXX)
         trap 'rm -rf "$TMP"' EXIT
@@ -191,6 +192,7 @@ rule flye:
         "output/benchmarks/assemble/flye/{sample}_benchmark.txt"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         if [ -s {params.workdir}/params.json ] && [ ! -s {params.workdir}/assembly.fasta ]; then
             flye --nano-hq {input.reads} --meta --threads {threads} --out-dir {params.workdir} \
                  --resume {params.extra} > {log} 2>&1
@@ -240,6 +242,7 @@ rule myloasm:
         "output/benchmarks/assemble/myloasm/{sample}_benchmark.txt"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         if [ ! -s {params.workdir}/assembly_primary.fa ]; then
             rm -rf {params.workdir}
             myloasm {input.reads} -o {params.workdir} -t {threads} {params.extra} > {log} 2>&1
@@ -323,6 +326,7 @@ rule polish_long_read_assembly:
         "output/benchmarks/assemble/polish/{lr_assembler}/{sample}_benchmark.txt"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         W={params.workdir}
         rm -rf "$W" && mkdir -p "$W"
         {{
@@ -386,6 +390,7 @@ rule remove_control_strand:
         "output/logs/assemble/control_strand/{lr_assembler}/{sample}.log"
     shell:
         """
+        export PATH="$CONDA_PREFIX/bin:$PATH"
         minimap2 -c -t {threads} {input.control} {input.polished} 2> {log} > {output.table}.paf
         python {params.script} --contigs {input.polished} --paf {output.table}.paf \
             --min-fraction {params.min_fraction} --kept {output.contigs}.partial \
